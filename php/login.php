@@ -2,184 +2,147 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/registration.php';
 
 $registrationMode = registration_mode($pdo);
+$ip = client_ip($_SERVER, app_config_list('TRUSTED_PROXIES'));
 
-// 强制使用东八区时间，保证 PHP 和 MySQL 锁定时间绝对对齐
-date_default_timezone_set('Asia/Shanghai');
-try { $pdo->exec("SET time_zone = '+08:00'"); } catch (Exception $e) {}
-
-function getRealIP() {
-    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        // NPM 等反代会把真实 IP 放在 X-Forwarded-For 中，如果有多个代理，取第一个逗号前的 IP
-        $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-        return trim($ips[0]);
+function login_lock_message(PDO $pdo, string $ip, string $username): ?string
+{
+    $ipLock = auth_lock_until($pdo, 'ip', $ip);
+    $usernameLock = $username !== '' ? auth_lock_until($pdo, 'username', $username) : null;
+    $lock = $ipLock ?? $usernameLock;
+    if ($lock === null) {
+        return null;
     }
-    // 阿里云直接 IP 访问走这里
-    return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-}
-$ip = getRealIP();
-
-// 检查是否处于锁定状态的函数
-function checkIsLocked($pdo, $ip, $username) {
-    $stmt = $pdo->prepare("SELECT type, lock_until FROM login_blocks WHERE (type = 'ip' AND identifier = ?) OR (type = 'username' AND identifier = ?)");
-    $stmt->execute([$ip, $username]);
-    $locks = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($locks as $lock) {
-        if ($lock['lock_until'] && strtotime($lock['lock_until']) > time()) {
-            $rem = ceil((strtotime($lock['lock_until']) - time()) / 60);
-            if ($lock['type'] === 'ip') return "🚫 您当前网络环境错误尝试过多，触发 IP 保护，请 $rem 分钟后再试。";
-            if ($lock['type'] === 'username') return "🚫 该账号密码频繁输入错误，已被安全锁定，请 $rem 分钟后再试。";
-        }
-    }
-    return false;
+    $minutes = max(1, (int) ceil(($lock->getTimestamp() - time()) / 60));
+    return "登录尝试过多，请 {$minutes} 分钟后再试。";
 }
 
-// 记录失败次数的函数（账号容错 5 次，IP 容错 20 次避免局域网误伤）
-function recordFailedAttempt($pdo, $ip, $username) {
-    $identifiers = [];
-    if ($ip) $identifiers['ip'] = $ip;
-    if ($username) $identifiers['username'] = $username;
-
-    foreach ($identifiers as $type => $val) {
-        $stmt = $pdo->prepare("SELECT failed_count, lock_until FROM login_blocks WHERE type = ? AND identifier = ?");
-        $stmt->execute([$type, $val]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        // --- 核心修复：IP 给 20 次机会，账号给 5 次机会 ---
-        $threshold = ($type === 'ip') ? 20 : 5;
-
-        if ($row) {
-            // 如果存在历史锁定且已过期，重置为 1 次
-            if ($row['lock_until'] && strtotime($row['lock_until']) <= time()) {
-                $pdo->prepare("UPDATE login_blocks SET failed_count = 1, lock_until = NULL WHERE type = ? AND identifier = ?")->execute([$type, $val]);
-            } else {
-                // 累计错误次数
-                $new_count = $row['failed_count'] + 1;
-                $lock = ($new_count >= $threshold) ? date('Y-m-d H:i:s', time() + 15 * 60) : NULL;
-                $pdo->prepare("UPDATE login_blocks SET failed_count = ?, lock_until = ? WHERE type = ? AND identifier = ?")->execute([$new_count, $lock, $type, $val]);
-            }
-        } else {
-            // 第一次失败
-            $pdo->prepare("INSERT INTO login_blocks (type, identifier, failed_count) VALUES (?, ?, 1)")->execute([$type, $val]);
-        }
-    }
+function record_login_failure(PDO $pdo, string $ip, string $username, bool $includeUsername = true): int
+{
+    record_auth_failure($pdo, 'ip', $ip, 20, 15);
+    return $includeUsername && $username !== ''
+        ? record_auth_failure($pdo, 'username', $username, 5, 15)
+        : 1;
 }
 
-// 成功后清除记录的函数
-function clearAttempts($pdo, $ip, $username) {
-    $stmt = $pdo->prepare("DELETE FROM login_blocks WHERE (type = 'ip' AND identifier = ?) OR (type = 'username' AND identifier = ?)");
-    $stmt->execute([$ip, $username]);
-}
-// ===============================
-
-
-// 拦截 AJAX 请求，处理密码找回 (同时接入防爆破)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['api_action'])) {
     header('Content-Type: application/json');
-    $u = trim($_POST['username'] ?? '');
-
-    // API 级别拦截锁
-    if ($lockMsg = checkIsLocked($pdo, $ip, $u)) {
-        echo json_encode(['status'=>'error', 'message'=>$lockMsg]);
-        exit;
-    }
-
-    if ($_POST['api_action'] === 'get_q') {
-        $stmt = $pdo->prepare("SELECT sec_q1, sec_q2, sec_q3 FROM users WHERE username = ? AND parent_id = 0");
-        $stmt->execute([$u]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($user && !empty($user['sec_q1'])) {
-            echo json_encode(['status'=>'success', 'data'=>$user]);
-        } else {
-            // --- 修复：找不到密保时，只封禁发起攻击的恶意 IP，绝不牵连目标账号 ---
-            recordFailedAttempt($pdo, $ip, null);
-            echo json_encode(['status'=>'error', 'message'=>'主账号不存在或早期账号未设置密保。员工请联系老板重置！']);
+    try {
+        require_csrf();
+        $u = trim((string) ($_POST['username'] ?? ''));
+        if ($u === '' || strlen($u) > 50) {
+            throw new HttpException('无法验证该账号的找回信息。', 400);
         }
-        exit;
-    }
+        if ($lockMsg = login_lock_message($pdo, $ip, $u)) {
+            throw new HttpException($lockMsg, 429);
+        }
 
-    if ($_POST['api_action'] === 'reset_pwd') {
-        $a1 = trim($_POST['a1']); $a2 = trim($_POST['a2']); $a3 = trim($_POST['a3']);
-        $new_pwd = $_POST['new_pwd'];
+        if ($_POST['api_action'] === 'get_q') {
+            $stmt = $pdo->prepare("SELECT sec_q1, sec_q2, sec_q3 FROM users WHERE username = ? AND parent_id = 0");
+            $stmt->execute([$u]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$user || empty($user['sec_q1'])) {
+                record_login_failure($pdo, $ip, $u, false);
+                throw new HttpException('无法验证该账号的找回信息。', 400);
+            }
+            echo json_encode(['status' => 'success', 'data' => $user], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
 
-        $stmt = $pdo->prepare("SELECT id, sec_a1, sec_a2, sec_a3 FROM users WHERE username = ? AND parent_id = 0");
-        $stmt->execute([$u]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($_POST['api_action'] === 'reset_pwd') {
+            $answers = [
+                trim((string) ($_POST['a1'] ?? '')),
+                trim((string) ($_POST['a2'] ?? '')),
+                trim((string) ($_POST['a3'] ?? '')),
+            ];
+            $newPassword = (string) ($_POST['new_pwd'] ?? '');
+            $passwordCheck = validate_password($newPassword);
+            if (!$passwordCheck['valid']) {
+                throw new HttpException(implode(' ', $passwordCheck['errors']), 400);
+            }
 
-        if ($user) {
-            $a1_match = password_verify($a1, $user['sec_a1']) || ($user['sec_a1'] === $a1);
-            $a2_match = password_verify($a2, $user['sec_a2']) || ($user['sec_a2'] === $a2);
-            $a3_match = password_verify($a3, $user['sec_a3']) || ($user['sec_a3'] === $a3);
+            $stmt = $pdo->prepare("SELECT id, sec_a1, sec_a2, sec_a3 FROM users WHERE username = ? AND parent_id = 0");
+            $stmt->execute([$u]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            $checks = $user ? [
+                verify_stored_secret($answers[0], (string) $user['sec_a1']),
+                verify_stored_secret($answers[1], (string) $user['sec_a2']),
+                verify_stored_secret($answers[2], (string) $user['sec_a3']),
+            ] : [];
 
-            if ($a1_match && $a2_match && $a3_match) {
-                $hash = password_hash($new_pwd, PASSWORD_DEFAULT);
-                $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
-                $stmt->execute([$hash, $user['id']]);
-                clearAttempts($pdo, $ip, $u); // 密保验证成功，清除错误状态
-                echo json_encode(['status'=>'success']);
+            if ($user && array_reduce($checks, fn (bool $valid, array $check): bool => $valid && $check['valid'], true)) {
+                $stmt = $pdo->prepare("UPDATE users SET password = ?, sec_a1 = ?, sec_a2 = ?, sec_a3 = ? WHERE id = ?");
+                $stmt->execute([
+                    password_hash($newPassword, PASSWORD_DEFAULT),
+                    $checks[0]['upgrade_hash'] ?? $user['sec_a1'],
+                    $checks[1]['upgrade_hash'] ?? $user['sec_a2'],
+                    $checks[2]['upgrade_hash'] ?? $user['sec_a3'],
+                    $user['id'],
+                ]);
+                clear_auth_failures($pdo, 'ip', $ip);
+                clear_auth_failures($pdo, 'username', $u);
+                echo json_encode(['status' => 'success'], JSON_UNESCAPED_UNICODE);
                 exit;
             }
+            record_login_failure($pdo, $ip, $u, false);
+            throw new HttpException('无法验证该账号的找回信息。', 400);
         }
-
-        // 修复：密保错误只惩罚发起攻击的 IP（传 null），绝不能连坐牵连被试探的账号被锁死
-        recordFailedAttempt($pdo, $ip, null);
-        echo json_encode(['status'=>'error', 'message'=>'密保答案错误，验证失败！']);
-        exit;
+        throw new HttpException('未知操作。', 400);
+    } catch (HttpException $exception) {
+        http_response_code($exception->statusCode());
+        echo json_encode(['status' => 'error', 'message' => $exception->getMessage()], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $exception) {
+        $requestId = safe_log($exception);
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => '请求暂时无法完成，请稍后重试。请求编号：' . $requestId], JSON_UNESCAPED_UNICODE);
     }
+    exit;
 }
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
-    $username = trim($_POST['username'] ?? '');
-    $password = $_POST['password'] ?? '';
+    try {
+        require_csrf();
+        $username = trim((string) ($_POST['username'] ?? ''));
+        $password = (string) ($_POST['password'] ?? '');
+        if ($username === '' || strlen($username) > 50) {
+            throw new HttpException('用户名或密码不正确。', 400);
+        }
+        if ($lockMsg = login_lock_message($pdo, $ip, $username)) {
+            throw new HttpException($lockMsg, 429);
+        }
 
-    // 表单级别拦截锁
-    if ($lockMsg = checkIsLocked($pdo, $ip, $username)) {
-        $error = $lockMsg;
-    } else {
-        try {
             $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
             $stmt->execute([$username]);
             $user = $stmt->fetch();
-            if ($user && password_verify($password, $user['password'])) {
-
-                clearAttempts($pdo, $ip, $username); // 密码正确，解除警报
-
-                // 🚀 核心绝杀 1：彻底清空前朝的幽灵数据（特别是旧的 last_active_time）
-                session_unset();
-
-                // 🛡️ 保持上次的修复：防高并发被覆盖
-                session_regenerate_id();
-
-                $_SESSION['is_logged_in'] = true; $_SESSION['user_id'] = $user['id']; $_SESSION['username'] = $user['username']; $_SESSION['role'] = $user['role'];
-                $_SESSION['parent_id'] = $user['parent_id'] ?? 0; $_SESSION['perm_finance'] = $user['perm_finance'] ?? 1; $_SESSION['perm_edit'] = $user['perm_edit'] ?? 1; $_SESSION['perm_delete'] = $user['perm_delete'] ?? 1;
-                $_SESSION['perm_tab_us'] = $user['perm_tab_us'] ?? 1; $_SESSION['perm_tab_transit'] = $user['perm_tab_transit'] ?? 1; $_SESSION['perm_tab_cn'] = $user['perm_tab_cn'] ?? 1; $_SESSION['perm_tab_sold'] = $user['perm_tab_sold'] ?? 1;
-
-                // 🚀 核心绝杀 2：登录成功瞬间，立刻刷新活跃时间！防止带着旧时间去主页被秒踢
-                $_SESSION['last_active_time'] = time();
-
-                // 🛡️ 保持上次的修复：强制落盘
-                session_write_close();
-
-                header("Location: index.php"); exit;
-            } else {
-                recordFailedAttempt($pdo, $ip, $username); // 密码错误，记录一笔
-
-                // 给用户动态提示还剩几次机会 (以账号错误次数为准展示)
-                $stmtLock = $pdo->prepare("SELECT failed_count FROM login_blocks WHERE type='username' AND identifier=?");
-                $stmtLock->execute([$username]);
-                $curr_fails = $stmtLock->fetchColumn() ?: 1;
-                $remains = 5 - $curr_fails;
-
-                if ($remains > 0) {
-                    $error = "密码不正确！该账号还有 $remains 次尝试机会。";
-                } else {
-                    $error = "🚫 错误次数超限，为保护账户安全，该账号已被锁定 15 分钟。";
+            $verification = $user
+                ? verify_stored_secret($password, (string) $user['password'])
+                : ['valid' => false, 'upgrade_hash' => null];
+            if ($user && $verification['valid']) {
+                clear_auth_failures($pdo, 'ip', $ip);
+                clear_auth_failures($pdo, 'username', $username);
+                if ($verification['upgrade_hash'] !== null) {
+                    $pdo->prepare('UPDATE users SET password = ? WHERE id = ?')
+                        ->execute([$verification['upgrade_hash'], $user['id']]);
                 }
+                establish_authenticated_session($user);
+                session_write_close();
+                header('Location: index.php');
+                exit;
             }
-        } catch (Exception $e) { $error = "系统未初始化，请先配置数据库环境"; }
+            $failures = record_login_failure($pdo, $ip, $username);
+            $remaining = max(0, 5 - $failures);
+            throw new HttpException($remaining > 0
+                ? "用户名或密码不正确，还可尝试 {$remaining} 次。"
+                : '登录尝试过多，账号已暂时锁定。', 401);
+    } catch (HttpException $exception) {
+        $error = $exception->getMessage();
+    } catch (Throwable $exception) {
+        $requestId = safe_log($exception);
+        $error = '登录暂时无法完成，请稍后重试。请求编号：' . $requestId;
     }
 }
 ?>
@@ -219,11 +182,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
 
         <?php if($error): ?>
             <div class="bg-red-50 text-red-600 border border-red-100 p-3 rounded-xl mb-6 text-sm font-bold shadow-sm text-center">
-                <?php echo $error; ?>
+                <?php echo e($error); ?>
             </div>
         <?php endif; ?>
 
         <form method="POST" class="flex flex-col gap-5" onsubmit="if(this.submitted) return false; this.submitted = true; document.getElementById('loginBtn').disabled = true; document.getElementById('loginBtn').innerText = '验证中...';">
+            <input type="hidden" name="_csrf_token" value="<?php echo e(csrf_token()); ?>">
             <div>
                 <input type="text" name="username" required placeholder="请输入系统用户名" autocomplete="off" class="w-full bg-[#F8F9FA] border border-slate-200 rounded-xl px-4 py-3.5 focus:bg-white focus:border-[#8B0000] focus:ring-1 focus:ring-[#8B0000] outline-none transition-all text-slate-800 font-medium">
             </div>
@@ -283,6 +247,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
     </div>
 
     <script>
+        const CSRF_TOKEN = <?php echo json_encode(csrf_token(), JSON_UNESCAPED_SLASHES); ?>;
+
         function toggleRecover(show) {
             document.getElementById('loginPanel').style.display = show ? 'none' : 'block';
             document.getElementById('recoverPanel').style.display = show ? 'flex' : 'none';
@@ -293,7 +259,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
         async function fetchQuestions() {
             const u = document.getElementById('rec_user').value.trim();
             if(!u) return alert("请输入用户名");
-            const fd = new FormData(); fd.append('api_action', 'get_q'); fd.append('username', u);
+            const fd = new FormData(); fd.append('_csrf_token', CSRF_TOKEN); fd.append('api_action', 'get_q'); fd.append('username', u);
             const res = await fetch('', {method:'POST', body:fd}); const result = await res.json();
             if(result.status === 'success') {
                 document.getElementById('lbl_q1').innerText = result.data.sec_q1;
@@ -305,7 +271,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
         }
 
         async function submitRecover() {
-            const fd = new FormData(); fd.append('api_action', 'reset_pwd');
+            const fd = new FormData(); fd.append('_csrf_token', CSRF_TOKEN); fd.append('api_action', 'reset_pwd');
             fd.append('username', document.getElementById('rec_user').value.trim());
             fd.append('a1', document.getElementById('rec_a1').value.trim());
             fd.append('a2', document.getElementById('rec_a2').value.trim());

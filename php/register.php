@@ -14,6 +14,7 @@ if ($registrationClosed) {
     $error = '系统当前已关闭新账号注册，请联系管理员。';
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
+        require_csrf();
         register_primary_account(
             $pdo,
             $_POST,
@@ -74,6 +75,7 @@ if ($registrationClosed) {
             <a href="login.php" class="block w-full text-center bg-[#8B0000] text-white font-bold py-3.5 rounded-xl hover:bg-[#600000] shadow-lg shadow-red-900/20 transition-all text-[15px] tracking-widest">立即前往登录</a>
         <?php else: ?>
             <form method="POST" class="flex flex-col gap-5">
+                <input type="hidden" name="_csrf_token" value="<?php echo e(csrf_token()); ?>">
 
                 <div class="space-y-4">
                     <div>
