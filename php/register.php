@@ -9,6 +9,7 @@ $success = '';
 $registrationMode = registration_mode($pdo);
 $initialSetup = initial_admin_setup_available($pdo);
 $registrationClosed = !$initialSetup && !registration_is_available($registrationMode);
+$formAction = (string) ($_POST['form_action'] ?? '');
 
 if ($registrationClosed) {
     http_response_code(403);
@@ -16,9 +17,11 @@ if ($registrationClosed) {
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         require_csrf();
-        if ($initialSetup) {
+        if ($formAction === 'initial_admin_setup') {
             register_initial_admin($pdo, $_POST);
             $success = '管理员创建成功！初始化入口已经自动关闭。';
+        } elseif ($initialSetup) {
+            throw new HttpException('请通过当前初始化页面创建管理员。', 400);
         } else {
             register_primary_account(
                 $pdo,
@@ -28,6 +31,10 @@ if ($registrationClosed) {
             $success = '注册成功！您的账号和密保信息已安全保存。';
         }
     } catch (HttpException $exception) {
+        if ($formAction === 'initial_admin_setup' && !initial_admin_setup_available($pdo)) {
+            header('Location: login.php');
+            exit;
+        }
         http_response_code($exception->statusCode());
         $error = $exception->getMessage();
     } catch (Throwable $exception) {
@@ -83,6 +90,9 @@ if ($registrationClosed) {
         <?php else: ?>
             <form method="POST" class="flex flex-col gap-5">
                 <input type="hidden" name="_csrf_token" value="<?php echo e(csrf_token()); ?>">
+                <?php if ($initialSetup): ?>
+                    <input type="hidden" name="form_action" value="initial_admin_setup">
+                <?php endif; ?>
 
                 <div class="space-y-4">
                     <div>

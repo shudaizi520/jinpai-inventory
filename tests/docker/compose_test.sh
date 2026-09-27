@@ -19,7 +19,9 @@ grep -q '^DEFAULT_REGISTRATION_MODE=invite$' .env.example
 grep -q 'scripts/migrate.php' scripts/docker-entrypoint.sh
 grep -q 'scripts/bootstrap-admin.php' scripts/docker-entrypoint.sh
 grep -q 'BOOTSTRAP_ADMIN_PASSWORD:-' scripts/docker-entrypoint.sh
-if grep -q 'BOOTSTRAP_ADMIN_PASSWORD:' compose.yaml; then
+grep -q 'BOOTSTRAP_ADMIN_USERNAME:.*BOOTSTRAP_ADMIN_USERNAME:-admin' compose.yaml
+grep -q 'BOOTSTRAP_ADMIN_PASSWORD:.*BOOTSTRAP_ADMIN_PASSWORD:-}' compose.yaml
+if grep -q 'BOOTSTRAP_ADMIN_PASSWORD:.*:?' compose.yaml; then
     echo 'Compose must not require an administrator password before first startup.' >&2
     exit 1
 fi

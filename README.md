@@ -37,6 +37,8 @@ docker compose ps
 
 浏览器打开 `http://NAS地址:8080`。新数据库没有任何账号时，系统会自动进入一次性的管理员初始化页面；请在 NAS 局域网中设置管理员用户名、登录密码和密保问题。第一个管理员创建成功后，初始化入口会自动关闭。数据库使用软件专属的 Docker 命名卷 `inventory_db_data`，不会连接或修改 NAS 上已有的数据库容器；删除或重建应用容器也不会删除库存。
 
+无人值守或批量部署时，可在 `.env` 取消 `BOOTSTRAP_ADMIN_USERNAME` 和 `BOOTSTRAP_ADMIN_PASSWORD` 两行注释并填写强密码，由容器首次启动时自动创建管理员。普通安装建议保持注释，使用浏览器初始化；自动创建的管理员登录后应在个人设置中补充密保信息。
+
 不要提交 `.env`。生产环境建议通过 HTTPS 反向代理访问，并将 `.env` 权限设为仅管理员可读。
 
 ## 注册模式与员工
@@ -122,7 +124,7 @@ docker run -d --name inventory-app --restart unless-stopped \
 ## 常见问题
 
 - `Set DB_PASSWORD in .env`：尚未填写 `.env` 密码，或值为空。
-- 应用容器反复重启：运行 `docker compose logs app`，通常是数据库密码不一致或管理员初始密码不符合规则。
+- 应用容器反复重启：运行 `docker compose logs app`，通常是数据库密码不一致；如果显式启用了高级自动初始化，也要确认管理员密码符合规则。
 - 数据库不健康：运行 `docker compose logs db`，确认 NAS 磁盘空间和卷权限。
 - HTTPS 下反复掉线：确认 `SESSION_COOKIE_SECURE=true`，并正确配置可信代理 IP。
 - 忘记主账号密码：使用登录页密保找回；员工密码由所属主账号在员工管理中重置。

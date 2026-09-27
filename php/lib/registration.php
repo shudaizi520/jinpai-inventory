@@ -15,7 +15,9 @@ function registration_is_available(string $mode): bool
 
 function initial_admin_setup_available(PDO $pdo): bool
 {
-    return (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0;
+    $state = $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key = 'initial_admin_setup'")->fetchColumn();
+    return $state === 'pending'
+        && (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0;
 }
 
 function register_initial_admin(PDO $pdo, array $input): int
@@ -27,12 +29,18 @@ function register_initial_admin(PDO $pdo, array $input): int
     $data = validate_primary_registration($input);
     $pdo->beginTransaction();
     try {
-        $lock = $pdo->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'registration_mode' FOR UPDATE");
+        $lock = $pdo->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'initial_admin_setup' FOR UPDATE");
         $lock->execute();
-        if ($lock->fetchColumn() === false) {
-            throw new RuntimeException('注册配置不存在，请先运行数据库迁移。');
+        $state = $lock->fetchColumn();
+        if ($state === false) {
+            throw new RuntimeException('管理员初始化状态不存在，请先运行数据库迁移。');
+        }
+        if ($state !== 'pending') {
+            throw new HttpException('系统已经完成初始化，请直接登录。', 409);
         }
         if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
+            $pdo->prepare("UPDATE app_settings SET setting_value = 'complete' WHERE setting_key = 'initial_admin_setup'")->execute();
+            $pdo->commit();
             throw new HttpException('系统已经完成初始化，请直接登录。', 409);
         }
 
@@ -51,6 +59,7 @@ function register_initial_admin(PDO $pdo, array $input): int
             $data['answer_hashes'][2],
         ]);
         $userId = (int) $pdo->lastInsertId();
+        $pdo->prepare("UPDATE app_settings SET setting_value = 'complete' WHERE setting_key = 'initial_admin_setup'")->execute();
         $pdo->commit();
         return $userId;
     } catch (Throwable $error) {

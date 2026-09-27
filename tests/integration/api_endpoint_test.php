@@ -202,20 +202,36 @@ test('fresh http installation guides the owner through one-time administrator se
         $setup = endpoint_http_request($baseUrl . '/register.php', 'GET', null, [], $cookies);
         assert_same(200, $setup['status']);
         assert_true(str_contains($setup['body'], '初始化系统管理员'));
+        assert_true(str_contains($setup['body'], 'name="form_action" value="initial_admin_setup"'));
         assert_true(preg_match('/name="_csrf_token" value="([a-f0-9]+)"/', $setup['body'], $csrfMatch) === 1);
 
-        $created = endpoint_form_request($baseUrl . '/register.php', [
-            '_csrf_token' => $csrfMatch[1],
+        $setupInput = [
+            'form_action' => 'initial_admin_setup',
             'username' => 'browser-admin',
             'password' => 'BrowserAdminPassword12!',
             'password_confirm' => 'BrowserAdminPassword12!',
             'q1' => '问题一', 'a1' => '答案一',
             'q2' => '问题二', 'a2' => '答案二',
             'q3' => '问题三', 'a3' => '答案三',
-        ], $cookies, $csrfMatch[1]);
+        ];
+
+        $missingCsrf = endpoint_form_request($baseUrl . '/register.php', $setupInput, $cookies);
+        assert_same(403, $missingCsrf['status']);
+        assert_same(0, (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn());
+
+        $wrongCsrf = endpoint_form_request($baseUrl . '/register.php', $setupInput, $cookies, str_repeat('0', 64));
+        assert_same(403, $wrongCsrf['status']);
+        assert_same(0, (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn());
+
+        $created = endpoint_form_request($baseUrl . '/register.php', $setupInput, $cookies, $csrfMatch[1]);
         assert_same(200, $created['status']);
         assert_true(str_contains($created['body'], '管理员创建成功'));
         assert_same(1, (int) $pdo->query("SELECT COUNT(*) FROM users WHERE username = 'browser-admin' AND role = 'admin' AND parent_id = 0")->fetchColumn());
+
+        $staleSetup = endpoint_form_request($baseUrl . '/register.php', $setupInput, $cookies, $csrfMatch[1]);
+        assert_same(302, $staleSetup['status']);
+        assert_true(in_array('Location: login.php', $staleSetup['headers'], true));
+        assert_same(1, (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn());
 
         $registration = endpoint_http_request($baseUrl . '/register.php', 'GET', null, [], $cookies);
         assert_same(200, $registration['status']);

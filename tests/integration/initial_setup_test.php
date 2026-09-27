@@ -77,11 +77,20 @@ test('fresh installation creates exactly one administrator with recovery details
             HttpException::class
         );
         assert_same(1, (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn());
+
+        $pdo->exec('DELETE FROM users');
+        assert_false(initial_admin_setup_available($pdo));
+        assert_throws(
+            fn () => register_initial_admin($pdo, initial_setup_valid_input('after-delete')),
+            HttpException::class
+        );
+        assert_same(0, (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn());
     });
 });
 
 test('existing account permanently disables browser administrator setup', function (): void {
     initial_setup_test_database(function (PDO $pdo): void {
+        $pdo->prepare("UPDATE app_settings SET setting_value = 'complete' WHERE setting_key = 'initial_admin_setup'")->execute();
         $pdo->exec("INSERT INTO users (username, password, role, parent_id) VALUES ('existing-owner', 'hash', 'user', 0)");
 
         assert_false(initial_admin_setup_available($pdo));
@@ -119,7 +128,7 @@ test('initial administrator creation is serialized across database connections',
 
         $pdo->beginTransaction();
         try {
-            $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key = 'registration_mode' FOR UPDATE")->fetchColumn();
+            $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key = 'initial_admin_setup' FOR UPDATE")->fetchColumn();
             assert_throws(
                 fn () => register_initial_admin($second, initial_setup_valid_input()),
                 PDOException::class

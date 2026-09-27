@@ -49,7 +49,8 @@ test('fresh database migration is complete and idempotent', function (): void {
             assert_true(in_array($table, $tables, true), "Missing table {$table}");
         }
         assert_same('invite', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='registration_mode'")->fetchColumn());
-        assert_same(2, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
+        assert_same('pending', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='initial_admin_setup'")->fetchColumn());
+        assert_same(3, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
     });
 });
 
@@ -95,12 +96,31 @@ test('legacy migration preserves users inventory values and orphan ownership', f
         assert_same('customer', $kept['receiver']);
         assert_same('200.00', $kept['collected_amount']);
         assert_same(999, (int) $pdo->query("SELECT user_id FROM inventory_items WHERE service_no='SN-ORPHAN'")->fetchColumn());
+        assert_same('complete', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='initial_admin_setup'")->fetchColumn());
 
         $uniqueServiceIndexes = $pdo->query("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='inventory_items' AND column_name='service_no' AND non_unique=0")->fetchColumn();
         assert_same(0, (int) $uniqueServiceIndexes);
         $lengths = $pdo->query("SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inventory_items' AND COLUMN_NAME IN ('service_no', 'batch_no')")->fetchAll(PDO::FETCH_KEY_PAIR);
         assert_same(100, (int) $lengths['service_no']);
         assert_same(100, (int) $lengths['batch_no']);
+    });
+});
+
+test('legacy database with an empty users table does not reopen administrator setup', function (): void {
+    migration_test_database(function (PDO $pdo): void {
+        $pdo->exec("CREATE TABLE users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(50) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL,
+            role ENUM('admin','user') DEFAULT 'user',
+            parent_id INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+        run_migrations($pdo);
+
+        assert_same(0, (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn());
+        assert_same('complete', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='initial_admin_setup'")->fetchColumn());
     });
 });
 

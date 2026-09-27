@@ -5,16 +5,19 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/security.php';
 
 const INVENTORY_BASE_SCHEMA_VERSION = '202609270001_secure_self_hosted_base';
-const INVENTORY_SCHEMA_VERSION = '202609270002_release_hardening';
+const INVENTORY_RELEASE_HARDENING_VERSION = '202609270002_release_hardening';
+const INVENTORY_SCHEMA_VERSION = '202609270003_initial_admin_setup_state';
 
 function run_migrations(PDO $pdo): void
 {
+    $usersTableExisted = database_table_exists($pdo, 'users');
     $pdo->exec("CREATE TABLE IF NOT EXISTS schema_migrations (
         version VARCHAR(100) PRIMARY KEY,
         applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    if (!migration_was_applied($pdo, INVENTORY_BASE_SCHEMA_VERSION)) {
+    $baseMigrationExisted = migration_was_applied($pdo, INVENTORY_BASE_SCHEMA_VERSION);
+    if (!$baseMigrationExisted) {
         create_core_tables($pdo);
         migrate_users_table($pdo);
         migrate_inventory_table($pdo);
@@ -25,10 +28,23 @@ function run_migrations(PDO $pdo): void
         record_migration($pdo, INVENTORY_BASE_SCHEMA_VERSION);
     }
 
-    if (!migration_was_applied($pdo, INVENTORY_SCHEMA_VERSION)) {
+    if (!migration_was_applied($pdo, INVENTORY_RELEASE_HARDENING_VERSION)) {
         apply_release_hardening_migration($pdo);
+        record_migration($pdo, INVENTORY_RELEASE_HARDENING_VERSION);
+    }
+
+    if (!migration_was_applied($pdo, INVENTORY_SCHEMA_VERSION)) {
+        $isBrandNewInstallation = !$usersTableExisted && !$baseMigrationExisted;
+        seed_initial_admin_setup_state($pdo, $isBrandNewInstallation);
         record_migration($pdo, INVENTORY_SCHEMA_VERSION);
     }
+}
+
+function database_table_exists(PDO $pdo, string $table): bool
+{
+    $statement = $pdo->prepare('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
+    $statement->execute([$table]);
+    return (int) $statement->fetchColumn() > 0;
 }
 
 function migration_was_applied(PDO $pdo, string $version): bool
@@ -245,6 +261,14 @@ function seed_registration_mode(PDO $pdo): void
     $statement->execute(['registration_mode', $mode]);
 }
 
+function seed_initial_admin_setup_state(PDO $pdo, bool $isBrandNewInstallation): void
+{
+    $hasUsers = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0;
+    $state = $isBrandNewInstallation && !$hasUsers ? 'pending' : 'complete';
+    $statement = $pdo->prepare('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)');
+    $statement->execute(['initial_admin_setup', $state]);
+}
+
 function report_orphaned_inventory(PDO $pdo): void
 {
     $count = (int) $pdo->query('SELECT COUNT(*) FROM inventory_items i LEFT JOIN users u ON u.id = i.user_id WHERE i.user_id <> 0 AND u.id IS NULL')->fetchColumn();
@@ -280,13 +304,23 @@ function bootstrap_admin(PDO $pdo, string $username, string $password): bool
 
     $pdo->beginTransaction();
     try {
-        $count = (int) $pdo->query('SELECT COUNT(*) FROM users FOR UPDATE')->fetchColumn();
-        if ($count > 0) {
+        $state = $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key = 'initial_admin_setup' FOR UPDATE")->fetchColumn();
+        if ($state === false) {
+            throw new RuntimeException('Initial administrator setup state is missing');
+        }
+        if ($state !== 'pending') {
             $pdo->rollBack();
+            return false;
+        }
+        $count = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+        if ($count > 0) {
+            $pdo->prepare("UPDATE app_settings SET setting_value = 'complete' WHERE setting_key = 'initial_admin_setup'")->execute();
+            $pdo->commit();
             return false;
         }
         $statement = $pdo->prepare("INSERT INTO users (username, password, role, parent_id) VALUES (?, ?, 'admin', 0)");
         $statement->execute([$username, password_hash($password, PASSWORD_DEFAULT)]);
+        $pdo->prepare("UPDATE app_settings SET setting_value = 'complete' WHERE setting_key = 'initial_admin_setup'")->execute();
         $pdo->commit();
         return true;
     } catch (Throwable $error) {
