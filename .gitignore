@@ -1,0 +1,10 @@
+.worktrees/
+.superpowers/
+.env
+.env.*
+!.env.example
+*.sql
+*.sql.gz
+*.log
+coverage/
+vendor/
