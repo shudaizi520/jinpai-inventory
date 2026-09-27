@@ -21,12 +21,11 @@ cd inventory
 cp .env.example .env
 ```
 
-编辑 `.env`，至少填写三个不同的高强度密码：
+编辑 `.env`，填写两个不同的高强度数据库密码：
 
 ```dotenv
 DB_PASSWORD=数据库业务账号随机密码
 MYSQL_ROOT_PASSWORD=数据库管理员随机密码
-BOOTSTRAP_ADMIN_PASSWORD=首个系统管理员密码（至少12位且包含三类字符）
 ```
 
 Linux / NAS 终端可用 `openssl rand -base64 32` 生成随机数据库密码。然后启动：
@@ -36,7 +35,7 @@ docker compose up -d --build
 docker compose ps
 ```
 
-浏览器打开 `http://NAS地址:8080`，使用 `.env` 中的 `BOOTSTRAP_ADMIN_USERNAME`（默认 `admin`）和管理员密码登录。第一次启动会自动建表并创建管理员；数据库使用 Docker 命名卷 `inventory_db_data`，删除或重建应用容器不会删除库存。
+浏览器打开 `http://NAS地址:8080`。新数据库没有任何账号时，系统会自动进入一次性的管理员初始化页面；请在 NAS 局域网中设置管理员用户名、登录密码和密保问题。第一个管理员创建成功后，初始化入口会自动关闭。数据库使用软件专属的 Docker 命名卷 `inventory_db_data`，不会连接或修改 NAS 上已有的数据库容器；删除或重建应用容器也不会删除库存。
 
 不要提交 `.env`。生产环境建议通过 HTTPS 反向代理访问，并将 `.env` 权限设为仅管理员可读。
 
@@ -115,8 +114,6 @@ docker run -d --name inventory-app --restart unless-stopped \
   -e DB_HOST=你的数据库地址 -e DB_PORT=3306 \
   -e DB_NAME=inventory -e DB_USER=inventory \
   -e DB_PASSWORD='数据库密码' \
-  -e BOOTSTRAP_ADMIN_USERNAME=admin \
-  -e BOOTSTRAP_ADMIN_PASSWORD='首次管理员密码' \
   inventory-app:local
 ```
 

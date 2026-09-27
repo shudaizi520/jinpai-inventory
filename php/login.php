@@ -8,6 +8,11 @@ require_once __DIR__ . '/lib/registration.php';
 $registrationMode = registration_mode($pdo);
 $ip = client_ip($_SERVER, app_config_list('TRUSTED_PROXIES'));
 
+if (initial_admin_setup_available($pdo)) {
+    header('Location: register.php');
+    exit;
+}
+
 function login_lock_message(PDO $pdo, string $ip, string $username): ?string
 {
     $ipLock = auth_lock_until($pdo, 'ip', $ip);

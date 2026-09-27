@@ -7,7 +7,8 @@ require_once __DIR__ . '/lib/registration.php';
 $error = '';
 $success = '';
 $registrationMode = registration_mode($pdo);
-$registrationClosed = !registration_is_available($registrationMode);
+$initialSetup = initial_admin_setup_available($pdo);
+$registrationClosed = !$initialSetup && !registration_is_available($registrationMode);
 
 if ($registrationClosed) {
     http_response_code(403);
@@ -15,12 +16,17 @@ if ($registrationClosed) {
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         require_csrf();
-        register_primary_account(
-            $pdo,
-            $_POST,
-            client_ip($_SERVER, app_config_list('TRUSTED_PROXIES'))
-        );
-        $success = '注册成功！您的账号和密保信息已安全保存。';
+        if ($initialSetup) {
+            register_initial_admin($pdo, $_POST);
+            $success = '管理员创建成功！初始化入口已经自动关闭。';
+        } else {
+            register_primary_account(
+                $pdo,
+                $_POST,
+                client_ip($_SERVER, app_config_list('TRUSTED_PROXIES'))
+            );
+            $success = '注册成功！您的账号和密保信息已安全保存。';
+        }
     } catch (HttpException $exception) {
         http_response_code($exception->statusCode());
         $error = $exception->getMessage();
@@ -34,7 +40,7 @@ if ($registrationClosed) {
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>注册 - 金牌卖家进销存</title>
+    <title><?php echo $initialSetup ? '初始化管理员' : '注册'; ?> - 金牌卖家进销存</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B0000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22'></path></svg>">
     <script src="assets/tailwindcss.js"></script>
     <style>
@@ -57,7 +63,10 @@ if ($registrationClosed) {
                     <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
                 </svg>
             </div>
-            <h2 class="text-[20px] font-black text-[#8B0000] tracking-wider">创建独立主账户</h2>
+            <h2 class="text-[20px] font-black text-[#8B0000] tracking-wider"><?php echo $initialSetup ? '初始化系统管理员' : '创建独立主账户'; ?></h2>
+            <?php if ($initialSetup): ?>
+                <p class="mt-3 text-xs leading-relaxed text-slate-500">这是新系统的一次性初始化。管理员创建成功后，此入口会自动关闭。</p>
+            <?php endif; ?>
         </div>
 
         <?php if($error): ?>
@@ -87,7 +96,7 @@ if ($registrationClosed) {
                             <input type="password" name="password_confirm" minlength="12" maxlength="128" required autocomplete="new-password" placeholder="再次确认密码" class="w-full bg-[#F8F9FA] border border-slate-200 rounded-xl px-4 py-3.5 focus:bg-white focus:border-[#8B0000] focus:ring-1 focus:ring-[#8B0000] outline-none transition-all text-slate-800 font-medium text-sm">
                         </div>
                     </div>
-                    <?php if ($registrationMode === 'invite'): ?>
+                    <?php if (!$initialSetup && $registrationMode === 'invite'): ?>
                         <div>
                             <input type="text" name="invite_code" required autocomplete="off" maxlength="64" placeholder="请输入管理员提供的邀请码" class="w-full bg-[#FFF7ED] border border-orange-200 rounded-xl px-4 py-3.5 focus:bg-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500 outline-none transition-all text-slate-800 font-medium text-sm uppercase">
                         </div>
@@ -138,13 +147,15 @@ if ($registrationClosed) {
                 </div>
 
                 <button type="submit" class="w-full bg-[#8B0000] text-white font-bold py-3.5 rounded-xl hover:bg-[#600000] shadow-lg shadow-red-900/20 transition-all mt-2 text-[15px] tracking-widest">
-                    立即注册并保存
+                    <?php echo $initialSetup ? '创建管理员并完成初始化' : '立即注册并保存'; ?>
                 </button>
             </form>
 
-            <div class="mt-6 text-center text-xs font-medium text-slate-400">
-                已有账户？ <a href="login.php" class="text-[#8B0000] font-bold hover:underline transition-colors">返回登录</a>
-            </div>
+            <?php if (!$initialSetup): ?>
+                <div class="mt-6 text-center text-xs font-medium text-slate-400">
+                    已有账户？ <a href="login.php" class="text-[#8B0000] font-bold hover:underline transition-colors">返回登录</a>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
     </div>
 

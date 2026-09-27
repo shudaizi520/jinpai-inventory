@@ -13,6 +13,54 @@ function registration_is_available(string $mode): bool
     return in_array($mode, ['invite', 'open'], true);
 }
 
+function initial_admin_setup_available(PDO $pdo): bool
+{
+    return (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() === 0;
+}
+
+function register_initial_admin(PDO $pdo, array $input): int
+{
+    if ($pdo->inTransaction()) {
+        throw new LogicException('管理员初始化必须在独立事务中执行。');
+    }
+
+    $data = validate_primary_registration($input);
+    $pdo->beginTransaction();
+    try {
+        $lock = $pdo->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'registration_mode' FOR UPDATE");
+        $lock->execute();
+        if ($lock->fetchColumn() === false) {
+            throw new RuntimeException('注册配置不存在，请先运行数据库迁移。');
+        }
+        if ((int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() !== 0) {
+            throw new HttpException('系统已经完成初始化，请直接登录。', 409);
+        }
+
+        $statement = $pdo->prepare("INSERT INTO users (
+            username, password, role, parent_id, perm_finance, perm_edit,
+            sec_q1, sec_a1, sec_q2, sec_a2, sec_q3, sec_a3
+        ) VALUES (?, ?, 'admin', 0, 1, 1, ?, ?, ?, ?, ?, ?)");
+        $statement->execute([
+            $data['username'],
+            $data['password_hash'],
+            $data['questions'][0],
+            $data['answer_hashes'][0],
+            $data['questions'][1],
+            $data['answer_hashes'][1],
+            $data['questions'][2],
+            $data['answer_hashes'][2],
+        ]);
+        $userId = (int) $pdo->lastInsertId();
+        $pdo->commit();
+        return $userId;
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        throw $error;
+    }
+}
+
 function registration_code_hash(string $plainCode): string
 {
     return hash('sha256', strtolower(trim($plainCode)));

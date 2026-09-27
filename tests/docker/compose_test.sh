@@ -18,6 +18,11 @@ grep -q 'DEFAULT_REGISTRATION_MODE:' compose.yaml
 grep -q '^DEFAULT_REGISTRATION_MODE=invite$' .env.example
 grep -q 'scripts/migrate.php' scripts/docker-entrypoint.sh
 grep -q 'scripts/bootstrap-admin.php' scripts/docker-entrypoint.sh
+grep -q 'BOOTSTRAP_ADMIN_PASSWORD:-' scripts/docker-entrypoint.sh
+if grep -q 'BOOTSTRAP_ADMIN_PASSWORD:' compose.yaml; then
+    echo 'Compose must not require an administrator password before first startup.' >&2
+    exit 1
+fi
 grep -q 'apache2-foreground' Dockerfile
 grep -Eq '^\.env$' .dockerignore
 grep -Eq '^\.git$' .dockerignore
@@ -31,7 +36,6 @@ test "$migration_line" -lt "$start_line"
 if command -v docker >/dev/null 2>&1; then
     DB_PASSWORD='test-database-password-123' \
     MYSQL_ROOT_PASSWORD='test-root-password-123' \
-    BOOTSTRAP_ADMIN_PASSWORD='TestAdminPassword12!' \
         docker compose config >/dev/null
 fi
 

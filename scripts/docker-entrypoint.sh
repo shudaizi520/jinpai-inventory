@@ -12,6 +12,8 @@ until php /opt/inventory/scripts/migrate.php; do
     sleep 2
 done
 
-php /opt/inventory/scripts/bootstrap-admin.php
+if [ -n "${BOOTSTRAP_ADMIN_PASSWORD:-}" ]; then
+    php /opt/inventory/scripts/bootstrap-admin.php
+fi
 
 exec "$@"

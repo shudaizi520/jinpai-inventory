@@ -77,7 +77,7 @@ function endpoint_login(string $baseUrl, string $username, string $password): ar
     return ['cookies' => $cookies, 'csrf' => $sessionCsrf[1]];
 }
 
-function endpoint_database(callable $test): void
+function endpoint_database(callable $test, bool $seedFixtures = true): void
 {
     $dsn = getenv('TEST_DB_DSN');
     if (!is_string($dsn) || $dsn === '') {
@@ -110,23 +110,27 @@ function endpoint_database(callable $test): void
     ]);
     run_migrations($pdo);
 
-    $passwordHash = password_hash('EndpointOwner12!', PASSWORD_DEFAULT);
-    $insertUser = $pdo->prepare("INSERT INTO users (id, username, password, role, parent_id, lock_tab_sold, lock_tab_parts_sold) VALUES (?, ?, ?, 'user', ?, 0, 0)");
-    $insertUser->execute([10, 'endpoint-owner-a', $passwordHash, 0]);
-    $insertUser->execute([11, 'endpoint-worker-a', $passwordHash, 10]);
-    $insertUser->execute([20, 'endpoint-owner-b', $passwordHash, 0]);
-    $insertUser->execute([21, 'endpoint-worker-b', $passwordHash, 20]);
-    $pdo->exec('UPDATE users SET perm_finance = 0 WHERE id = 11');
-    $insertItem = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, quantity, status, cost_rmb, freight, collected_amount) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    $insertItem->execute([10, 'OWNER-A-ITEM', 1, 'US', 10, 1, 100]);
-    $insertItem->execute([10, 'OWNER-A-PART', 3, 'PARTS', 300, 30, 0]);
-    $insertItem->execute([10, 'OWNER-A-SOLD', 1, 'SOLD', 400, 40, 500]);
-    $ownerSoldId = (int) $pdo->lastInsertId();
-    $pdo->prepare('UPDATE inventory_items SET receiver = ? WHERE id = ?')->execute(['existing-customer', $ownerSoldId]);
-    $insertItem->execute([20, 'OWNER-B-ITEM', 1, 'US', 900, 90, 1200]);
-    $foreignId = (int) $pdo->lastInsertId();
-    $insertItem->execute([20, 'OWNER-B-PART', 3, 'PARTS', 300, 30, 0]);
-    $foreignPartId = (int) $pdo->lastInsertId();
+    $foreignId = 0;
+    $foreignPartId = 0;
+    if ($seedFixtures) {
+        $passwordHash = password_hash('EndpointOwner12!', PASSWORD_DEFAULT);
+        $insertUser = $pdo->prepare("INSERT INTO users (id, username, password, role, parent_id, lock_tab_sold, lock_tab_parts_sold) VALUES (?, ?, ?, 'user', ?, 0, 0)");
+        $insertUser->execute([10, 'endpoint-owner-a', $passwordHash, 0]);
+        $insertUser->execute([11, 'endpoint-worker-a', $passwordHash, 10]);
+        $insertUser->execute([20, 'endpoint-owner-b', $passwordHash, 0]);
+        $insertUser->execute([21, 'endpoint-worker-b', $passwordHash, 20]);
+        $pdo->exec('UPDATE users SET perm_finance = 0 WHERE id = 11');
+        $insertItem = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, quantity, status, cost_rmb, freight, collected_amount) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $insertItem->execute([10, 'OWNER-A-ITEM', 1, 'US', 10, 1, 100]);
+        $insertItem->execute([10, 'OWNER-A-PART', 3, 'PARTS', 300, 30, 0]);
+        $insertItem->execute([10, 'OWNER-A-SOLD', 1, 'SOLD', 400, 40, 500]);
+        $ownerSoldId = (int) $pdo->lastInsertId();
+        $pdo->prepare('UPDATE inventory_items SET receiver = ? WHERE id = ?')->execute(['existing-customer', $ownerSoldId]);
+        $insertItem->execute([20, 'OWNER-B-ITEM', 1, 'US', 900, 90, 1200]);
+        $foreignId = (int) $pdo->lastInsertId();
+        $insertItem->execute([20, 'OWNER-B-PART', 3, 'PARTS', 300, 30, 0]);
+        $foreignPartId = (int) $pdo->lastInsertId();
+    }
 
     $serverCommand = trim((string) (getenv('TEST_PHP_SERVER_COMMAND') ?: PHP_BINARY));
     $command = preg_split('/\s+/', $serverCommand) ?: [PHP_BINARY];
@@ -187,6 +191,40 @@ function endpoint_database(callable $test): void
         $admin->exec("DROP USER IF EXISTS '{$databaseUser}'@'%'");
     }
 }
+
+test('fresh http installation guides the owner through one-time administrator setup', function (): void {
+    endpoint_database(function (PDO $pdo, string $baseUrl): void {
+        $cookies = [];
+        $login = endpoint_http_request($baseUrl . '/login.php', 'GET', null, [], $cookies);
+        assert_same(302, $login['status']);
+        assert_true(in_array('Location: register.php', $login['headers'], true));
+
+        $setup = endpoint_http_request($baseUrl . '/register.php', 'GET', null, [], $cookies);
+        assert_same(200, $setup['status']);
+        assert_true(str_contains($setup['body'], '初始化系统管理员'));
+        assert_true(preg_match('/name="_csrf_token" value="([a-f0-9]+)"/', $setup['body'], $csrfMatch) === 1);
+
+        $created = endpoint_form_request($baseUrl . '/register.php', [
+            '_csrf_token' => $csrfMatch[1],
+            'username' => 'browser-admin',
+            'password' => 'BrowserAdminPassword12!',
+            'password_confirm' => 'BrowserAdminPassword12!',
+            'q1' => '问题一', 'a1' => '答案一',
+            'q2' => '问题二', 'a2' => '答案二',
+            'q3' => '问题三', 'a3' => '答案三',
+        ], $cookies, $csrfMatch[1]);
+        assert_same(200, $created['status']);
+        assert_true(str_contains($created['body'], '管理员创建成功'));
+        assert_same(1, (int) $pdo->query("SELECT COUNT(*) FROM users WHERE username = 'browser-admin' AND role = 'admin' AND parent_id = 0")->fetchColumn());
+
+        $registration = endpoint_http_request($baseUrl . '/register.php', 'GET', null, [], $cookies);
+        assert_same(200, $registration['status']);
+        assert_false(str_contains($registration['body'], '初始化系统管理员'));
+        assert_true(str_contains($registration['body'], '邀请码'));
+
+        endpoint_login($baseUrl, 'browser-admin', 'BrowserAdminPassword12!');
+    }, false);
+});
 
 test('http inventory and employee mutations cannot cross tenant boundaries', function (): void {
     endpoint_database(function (PDO $pdo, string $baseUrl, int $foreignId, int $foreignPartId): void {
