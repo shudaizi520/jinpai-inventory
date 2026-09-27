@@ -48,7 +48,7 @@ if ($registrationClosed) {
 <head>
     <meta charset="UTF-8">
     <title><?php echo $initialSetup ? '初始化管理员' : '注册'; ?> - 金牌卖家进销存</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B0000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22'></path></svg>">
+    <link rel="icon" type="image/svg+xml" href="assets/inventory-logo.svg">
     <script src="assets/tailwindcss.js"></script>
     <style>
         input::placeholder { color: #94a3b8; font-size: 14px; }
@@ -66,9 +66,7 @@ if ($registrationClosed) {
     <div class="bg-white px-10 py-10 rounded-[28px] shadow-2xl w-[480px] z-10 relative">
         <div class="text-center mb-8">
             <div class="flex justify-center mb-3">
-                <svg stroke-linejoin="round" stroke-linecap="round" stroke-width="2" stroke="currentColor" fill="none" viewBox="0 0 24 24" class="w-9 h-9 text-[#8B0000]">
-                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-                </svg>
+                <img src="assets/inventory-logo.svg" alt="金牌卖家进销存" class="w-11 h-11">
             </div>
             <h2 class="text-[20px] font-black text-[#8B0000] tracking-wider"><?php echo $initialSetup ? '初始化系统管理员' : '创建独立主账户'; ?></h2>
             <?php if ($initialSetup): ?>

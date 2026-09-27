@@ -4,9 +4,21 @@ set -eu
 root_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$root_dir"
 
-for file in README.md SECURITY.md LICENSE .github/workflows/ci.yml scripts/backup.sh scripts/restore.sh; do
+for file in README.md SECURITY.md LICENSE .github/workflows/ci.yml scripts/backup.sh scripts/restore.sh php/assets/inventory-logo.svg; do
     test -s "$file" || { echo "Missing release file: $file" >&2; exit 1; }
 done
+
+for page in php/login.php php/register.php php/index.php; do
+    grep -q 'assets/inventory-logo.svg' "$page" || {
+        echo "Inventory logo is missing from: $page" >&2
+        exit 1
+    }
+done
+
+if grep -R -q 'M9 19c-5 1.5-5-2.5-7-3' php --include='*.php'; then
+    echo 'Legacy GitHub logo is still present.' >&2
+    exit 1
+fi
 
 for topic in 'Docker' '邀请码' '备份' '恢复' 'HTTPS' '更新' '回滚'; do
     grep -q "$topic" README.md || { echo "README is missing topic: $topic" >&2; exit 1; }

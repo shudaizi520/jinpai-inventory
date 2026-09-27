@@ -159,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
 <head>
     <meta charset="UTF-8">
     <title>登录 - 金牌卖家进销存</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238B0000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22'></path></svg>">
+    <link rel="icon" type="image/svg+xml" href="assets/inventory-logo.svg">
     <script src="assets/tailwindcss.js"></script>
     <style>
         input::placeholder { color: #94a3b8; font-size: 14px; }
@@ -178,9 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
     <div id="loginPanel" class="bg-white px-10 py-12 rounded-[28px] shadow-2xl w-[420px] z-10 transition-opacity duration-300 relative">
         <div class="text-center mb-10">
             <div class="flex justify-center mb-4">
-                <svg stroke-linejoin="round" stroke-linecap="round" stroke-width="2" stroke="currentColor" fill="none" viewBox="0 0 24 24" class="w-10 h-10 text-[#8B0000] hover:scale-110 duration-200 cursor-pointer">
-                    <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
-                </svg>
+                <img src="assets/inventory-logo.svg" alt="金牌卖家进销存" class="w-12 h-12 hover:scale-110 duration-200">
             </div>
             <h2 class="text-[22px] font-black text-[#8B0000] tracking-wider">金牌卖家 Workstation</h2>
         </div>
