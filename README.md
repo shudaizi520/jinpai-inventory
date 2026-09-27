@@ -16,7 +16,7 @@
 要求：Docker Engine 24+，并支持 `docker compose`。
 
 ```bash
-git clone <你的 GitHub 仓库地址> inventory
+git clone https://github.com/shudaizi520/jinpai-inventory.git inventory
 cd inventory
 cp .env.example .env
 ```
