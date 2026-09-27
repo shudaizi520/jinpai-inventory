@@ -345,7 +345,7 @@ if ($is_initial_admin) {
                     <?php if($is_sub_account): ?>
                         <div class="w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs font-bold shadow-inner">员工</div>
                     <?php else: ?>
-                        <div class="w-7 h-7 rounded-full bg-white text-[#8B0000] flex items-center justify-center text-[13px] font-black shadow-inner"><?php echo mb_substr(htmlspecialchars($_SESSION['username'] ?? '用'), 0, 1, 'UTF-8'); ?></div>
+                        <div class="w-7 h-7 rounded-full bg-white text-[#8B0000] flex items-center justify-center text-[13px] font-black shadow-inner"><?php echo e(first_character((string) ($_SESSION['username'] ?? '用'))); ?></div>
                     <?php endif; ?>
                     <span class="text-[14px] font-bold tracking-wide"><?php echo htmlspecialchars($_SESSION['username'] ?? '预览用户'); ?></span>
                     <svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>

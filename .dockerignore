@@ -1,0 +1,15 @@
+.git
+.github
+.worktrees
+.superpowers
+.env
+.env.*
+!.env.example
+*.sql
+*.sql.gz
+*.log
+*.rar
+backups
+docs
+tests
+vendor

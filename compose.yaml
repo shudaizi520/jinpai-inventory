@@ -1,0 +1,48 @@
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:-inventory}
+      MARIADB_USER: ${DB_USER:-inventory}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - inventory_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME:-inventory}
+      DB_USER: ${DB_USER:-inventory}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD in .env}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Shanghai}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
+      MAX_PRIMARY_ACCOUNTS: ${MAX_PRIMARY_ACCOUNTS:-50}
+    ports:
+      - "${APP_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD", "php", "/opt/inventory/scripts/healthcheck.php"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  inventory_db_data:

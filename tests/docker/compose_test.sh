@@ -1,0 +1,35 @@
+#!/bin/sh
+set -eu
+
+root_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cd "$root_dir"
+
+required_files='Dockerfile compose.yaml .dockerignore .env.example docker/apache-security.conf scripts/docker-entrypoint.sh scripts/healthcheck.php'
+for file in $required_files; do
+    test -f "$file" || { echo "Missing $file" >&2; exit 1; }
+done
+
+grep -Eq '^FROM php:8\.4-apache' Dockerfile
+grep -q 'pdo_mysql' Dockerfile
+grep -q 'inventory_db_data:' compose.yaml
+grep -q 'condition: service_healthy' compose.yaml
+grep -q 'healthcheck:' compose.yaml
+grep -q 'scripts/migrate.php' scripts/docker-entrypoint.sh
+grep -q 'scripts/bootstrap-admin.php' scripts/docker-entrypoint.sh
+grep -q 'apache2-foreground' Dockerfile
+grep -Eq '^\.env$' .dockerignore
+grep -Eq '^\.git$' .dockerignore
+grep -Eq '\*\.sql' .dockerignore
+
+migration_line=$(grep -n 'scripts/migrate.php' scripts/docker-entrypoint.sh | head -n1 | cut -d: -f1)
+start_line=$(grep -n 'exec.*apache2-foreground\|exec.*"\$@"' scripts/docker-entrypoint.sh | tail -n1 | cut -d: -f1)
+test "$migration_line" -lt "$start_line"
+
+if command -v docker >/dev/null 2>&1; then
+    DB_PASSWORD='test-database-password-123' \
+    MYSQL_ROOT_PASSWORD='test-root-password-123' \
+    BOOTSTRAP_ADMIN_PASSWORD='TestAdminPassword12!' \
+        docker compose config >/dev/null
+fi
+
+echo 'Docker packaging checks passed.'

@@ -139,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
                 ? "用户名或密码不正确，还可尝试 {$remaining} 次。"
                 : '登录尝试过多，账号已暂时锁定。', 401);
     } catch (HttpException $exception) {
+        http_response_code($exception->statusCode());
         $error = $exception->getMessage();
     } catch (Throwable $exception) {
         $requestId = safe_log($exception);

@@ -146,3 +146,8 @@ function e(mixed $value): string
 {
     return htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
+
+function first_character(string $value, string $fallback = '用'): string
+{
+    return preg_match('/^./us', $value, $match) === 1 ? $match[0] : $fallback;
+}

@@ -10,6 +10,7 @@ test('server rendered text escapes html and javascript payloads', function (): v
     assert_true(str_contains($escaped, '&lt;img'));
     assert_true(str_contains($escaped, '&quot;'));
     assert_true(str_contains($escaped, '&#039;'));
+    assert_same('库', first_character('库存'));
 });
 
 test('dynamic api errors and usernames are not interpolated into html sinks', function (): void {
