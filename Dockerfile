@@ -10,6 +10,7 @@ COPY docker/apache-security.conf /etc/apache2/conf-available/inventory-security.
 RUN a2enconf inventory-security
 
 COPY php/ /var/www/html/
+COPY php/lib/ /opt/inventory/php/lib/
 COPY scripts/ /opt/inventory/scripts/
 
 RUN chown -R www-data:www-data /var/www/html \

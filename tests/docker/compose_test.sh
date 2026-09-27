@@ -11,6 +11,7 @@ done
 
 grep -Eq '^FROM php:8\.4-apache' Dockerfile
 grep -q 'pdo_mysql' Dockerfile
+grep -q 'COPY php/lib/ /opt/inventory/php/lib/' Dockerfile
 grep -q 'inventory_db_data:' compose.yaml
 grep -q 'condition: service_healthy' compose.yaml
 grep -q 'healthcheck:' compose.yaml
