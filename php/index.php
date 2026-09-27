@@ -102,28 +102,28 @@ if ($is_initial_admin) {
         table, th, td, tr, tbody, thead, span, p, div { -webkit-user-select: text !important; -moz-user-select: text !important; -ms-user-select: text !important; user-select: text !important; cursor: text; }
         button, a, input[type="checkbox"], label, .tab-btn, .cursor-pointer, [onclick], button *, a *, label *, .tab-btn *, .cursor-pointer *, [onclick] * { -webkit-user-select: none !important; -moz-user-select: none !important; -ms-user-select: none !important; user-select: none !important; cursor: pointer !important; }
         body { background-color: #F4F7F9; overflow: hidden; height: 100vh; display: flex; flex-direction: column; font-family: system-ui, -apple-system, sans-serif; }
-        .tab-btn { 
-            padding: 8px 20px; 
-            color: #64748b; 
-            font-weight: 600; 
-            font-size: 14px; 
-            border-radius: 12px; 
+        .tab-btn {
+            padding: 8px 20px;
+            color: #64748b;
+            font-weight: 600;
+            font-size: 14px;
+            border-radius: 12px;
             transition: all 0.15s ease; /* 动画改成了极短时间的无感淡入淡出 */
-            border: 1px solid transparent; 
-            background: transparent; 
-            outline: none; 
+            border: 1px solid transparent;
+            background: transparent;
+            outline: none;
         }
-        .tab-btn:hover:not(.active) { 
-            color: #1e293b; 
-            background-color: #ffffff; 
-            border-color: rgba(0,0,0,0.05); 
+        .tab-btn:hover:not(.active) {
+            color: #1e293b;
+            background-color: #ffffff;
+            border-color: rgba(0,0,0,0.05);
             box-shadow: 0 2px 6px rgba(0,0,0,0.04); /* 阴影调得更贴地，不那么飘了 */
             z-index: 10;
         }
-        .tab-btn.active { 
-            color: #8B0000; 
-            font-weight: 800; 
-            background-color: #ffffff; 
+        .tab-btn.active {
+            color: #8B0000;
+            font-weight: 800;
+            background-color: #ffffff;
             border-color: #8B0000; /* 依然保留绝对清晰的品牌红边框 */
             box-shadow: 0 2px 8px rgba(139, 0, 0, 0.12); /* 依然保留微红的高级光晕，但更贴地 */
             z-index: 10;
@@ -163,10 +163,10 @@ if ($is_initial_admin) {
         }
 
         const phpTag = '<' + '?php';
-        const parsePHP = (str, def) => { 
-            if (str.trim().startsWith(phpTag) || str.includes(phpTag)) return def; 
-            const num = parseInt(str, 10); 
-            return isNaN(num) ? def : num; 
+        const parsePHP = (str, def) => {
+            if (str.trim().startsWith(phpTag) || str.includes(phpTag)) return def;
+            const num = parseInt(str, 10);
+            return isNaN(num) ? def : num;
         };
 
         const PERM_FINANCE = parsePHP("<?php echo $perm_finance; ?>", 1);
@@ -178,51 +178,51 @@ if ($is_initial_admin) {
         const PERM_EXPORT = parsePHP("<?php echo $perm_export; ?>", 1);
         const rawSubAcc = "<?php echo $is_sub_account ? 'true' : 'false'; ?>";
         const IS_SUB_ACCOUNT = (rawSubAcc.trim().startsWith(phpTag) || rawSubAcc.includes(phpTag)) ? false : (rawSubAcc === 'true');
-        
+
         let TIMEOUT_MINUTES = parsePHP("<?php echo $timeout_minutes; ?>", 20);
-        const LOCK_TABS = { 
-            'US': parsePHP("<?php echo $l_us; ?>", 0), 
-            'TRANSIT': parsePHP("<?php echo $l_transit; ?>", 0), 
-            'CN_WH': parsePHP("<?php echo $l_cn; ?>", 0), 
-            'SOLD': parsePHP("<?php echo $l_sold; ?>", 1), 
-            'REPAIR': parsePHP("<?php echo $l_repair; ?>", 0), 
+        const LOCK_TABS = {
+            'US': parsePHP("<?php echo $l_us; ?>", 0),
+            'TRANSIT': parsePHP("<?php echo $l_transit; ?>", 0),
+            'CN_WH': parsePHP("<?php echo $l_cn; ?>", 0),
+            'SOLD': parsePHP("<?php echo $l_sold; ?>", 1),
+            'REPAIR': parsePHP("<?php echo $l_repair; ?>", 0),
             'REPAIR_DONE': parsePHP("<?php echo $l_repair_done; ?>", 0),
-            'PARTS': parsePHP("<?php echo $l_parts; ?>", 0), 
+            'PARTS': parsePHP("<?php echo $l_parts; ?>", 0),
             'PARTS_SOLD': parsePHP("<?php echo $l_parts_sold; ?>", 1)
         };
-        
+
         let isFinanceUnlocked = false;
         let currentTab = '';
-        
-        const p_cn = parsePHP("<?php echo $p_cn; ?>", 1); 
-        const p_us = parsePHP("<?php echo $p_us; ?>", 1); 
+
+        const p_cn = parsePHP("<?php echo $p_cn; ?>", 1);
+        const p_us = parsePHP("<?php echo $p_us; ?>", 1);
         const p_transit = parsePHP("<?php echo $p_transit; ?>", 1);
-        const p_sold = parsePHP("<?php echo $p_sold; ?>", 1); 
-        const p_repair = parsePHP("<?php echo $p_repair; ?>", 1); 
+        const p_sold = parsePHP("<?php echo $p_sold; ?>", 1);
+        const p_repair = parsePHP("<?php echo $p_repair; ?>", 1);
         const p_repair_done = parsePHP("<?php echo $p_repair_done; ?>", 1);
-        const p_parts = parsePHP("<?php echo $p_parts; ?>", 1); 
+        const p_parts = parsePHP("<?php echo $p_parts; ?>", 1);
         const p_parts_sold = parsePHP("<?php echo $p_parts_sold; ?>", 1);
 
         if(p_cn === 1) currentTab = 'CN_WH';
         if (!currentTab) {
             const availableTabs = [];
-            if(p_us === 1) availableTabs.push('US'); 
-            if(p_transit === 1) availableTabs.push('TRANSIT'); 
+            if(p_us === 1) availableTabs.push('US');
+            if(p_transit === 1) availableTabs.push('TRANSIT');
             if(p_sold === 1) availableTabs.push('SOLD');
-            if(p_parts === 1) availableTabs.push('PARTS'); 
+            if(p_parts === 1) availableTabs.push('PARTS');
             if(p_parts_sold === 1) availableTabs.push('PARTS_SOLD');
-            if(p_repair === 1) availableTabs.push('REPAIR'); 
+            if(p_repair === 1) availableTabs.push('REPAIR');
             if(p_repair_done === 1) availableTabs.push('REPAIR_DONE');
             if(availableTabs.length > 0) currentTab = availableTabs[0];
         }
         if (!currentTab) currentTab = 'NONE';
-        
+
         // === 🌟 1. 全局活跃度共享（带防卡顿优化） ===
         let tabLastActive = Date.now();
-        function updateTabActivity() { 
+        function updateTabActivity() {
             let now = Date.now();
             if (now - tabLastActive > 1000) { // 每秒最多记录一次，防止鼠标滑动导致浏览器卡顿
-                tabLastActive = now; 
+                tabLastActive = now;
                 localStorage.setItem('sys_shared_active_time', tabLastActive.toString());
             }
         }
@@ -254,11 +254,11 @@ if ($is_initial_admin) {
             try {
                 const r = await apiFetch('api_inventory.php', {method: 'POST', body: fd});
                 const j = await r.json();
-                
+
                 if(j.status === 'success') {
-                    sessionStorage.removeItem('sys_tab_locked'); 
-                    localStorage.removeItem('sys_global_locked'); 
-                    window.location.reload(); 
+                    sessionStorage.removeItem('sys_tab_locked');
+                    localStorage.removeItem('sys_global_locked');
+                    window.location.reload();
                 } else if (j.message === '登录状态失效' || j.message === 'FORCE_LOGOUT') {
                     sessionStorage.removeItem('sys_tab_locked');
                     localStorage.removeItem('sys_global_locked');
@@ -294,17 +294,17 @@ if ($is_initial_admin) {
 
         // === 🛡️ 3. 初始加载防御 ===
         if (sessionStorage.getItem('sys_tab_locked') === '1' || localStorage.getItem('sys_global_locked') === '1') {
-            document.documentElement.style.visibility = 'hidden'; 
+            document.documentElement.style.visibility = 'hidden';
             window.addEventListener('DOMContentLoaded', () => {
                 document.documentElement.style.visibility = 'visible';
-                renderTabLockScreen(); 
+                renderTabLockScreen();
             });
         } else {
             // === ⏱️ 4. 核心心跳与智能超时控制 ===
             setInterval(() => {
                 let isLocked = sessionStorage.getItem('sys_tab_locked') === '1' || localStorage.getItem('sys_global_locked') === '1';
                 let now = Date.now();
-                
+
                 // 读取全局最高活跃时间，防止后台页面被误杀
                 let sharedActive = parseInt(localStorage.getItem('sys_shared_active_time') || '0');
                 if (sharedActive > tabLastActive) {
@@ -321,9 +321,9 @@ if ($is_initial_admin) {
                             relockFinance().catch(()=>'');
                             renderTabLockScreen();
                         }
-                    } 
+                    }
                 }
-                
+
                 // 阻断幽灵心跳：离开座位 35 秒后彻底闭嘴，让后端的 PHP 会话自然死亡
                 if (!isLocked && (now - tabLastActive < 35000)) {
                     apiFetch('api_inventory.php?action=heartbeat').catch(()=>'');
@@ -415,27 +415,27 @@ if ($is_initial_admin) {
                 <?php if($p_transit == 1): ?><button onclick="switchTab('TRANSIT')" id="tab_TRANSIT" class="tab-btn whitespace-nowrap">🚢 国外途中</button><?php endif; ?>
                 <?php if($p_cn == 1): ?><button onclick="switchTab('CN_WH')" id="tab_CN_WH" class="tab-btn whitespace-nowrap">🇨🇳 国内仓</button><?php endif; ?>
                 <?php if($p_sold == 1): ?><button onclick="switchTab('SOLD')" id="tab_SOLD" class="tab-btn whitespace-nowrap">✅ 已售出</button><?php endif; ?>
-                
+
                 <div class="w-[1px] h-5 bg-slate-200 mx-2 shrink-0"></div>
-                
+
                 <?php if($p_parts == 1): ?><button onclick="switchTab('PARTS')" id="tab_PARTS" class="tab-btn whitespace-nowrap">🔌 零配件仓</button><?php endif; ?>
                 <?php if($p_parts_sold == 1): ?><button onclick="switchTab('PARTS_SOLD')" id="tab_PARTS_SOLD" class="tab-btn whitespace-nowrap">🛒 已售配件</button><?php endif; ?>
-                
+
                 <div class="flex-grow"></div>
-                
+
                 <?php if($p_repair == 1): ?><button onclick="switchTab('REPAIR')" id="tab_REPAIR" class="tab-btn whitespace-nowrap">🛠️ 售后维修</button><?php endif; ?>
                 <?php if($p_repair_done == 1): ?><button onclick="switchTab('REPAIR_DONE')" id="tab_REPAIR_DONE" class="tab-btn whitespace-nowrap">📦 维修完毕</button><?php endif; ?>
             </div>
-            
+
             <div id="statsSummaryPanel" class="hidden flex-none bg-white border-b border-slate-100 p-3 overflow-y-auto"></div>
-            
+
             <div class="flex-1 overflow-y-auto">
                 <table class="w-full text-left text-sm border-collapse select-text">
                     <thead id="tableHead" class="bg-[#F8F9FA] text-slate-500 sticky top-0 z-10 shadow-sm"></thead>
                     <tbody id="tableBody" class="divide-y divide-slate-100 bg-white select-text"><tr><td colspan="14" class="text-center py-20 text-slate-400">数据加载中...</td></tr></tbody>
                 </table>
             </div>
-            
+
             <div id="paginationPanel" class="flex-none p-2.5 bg-[#F8F9FA] border-t border-slate-200 flex justify-between items-center hidden text-sm">
                 <div class="text-slate-500 font-medium ml-2" id="pageInfo"></div>
                 <div class="flex gap-2 mr-2" id="pageControls"></div>
@@ -452,22 +452,22 @@ if ($is_initial_admin) {
             <div class="p-6">
                 <form id="dispatchForm" onsubmit="submitDispatch(event)" class="space-y-4">
                     <input type="hidden" id="dispatch_id">
-                    
+
                     <div>
                         <label class="block text-sm font-bold text-slate-700 mb-1">出库数量 <span class="text-xs text-indigo-600 font-normal ml-1" id="dispatch_max_label"></span></label>
                         <input type="number" id="dispatch_qty" min="1" required class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
                     </div>
-                    
+
                     <div>
                         <label class="block text-sm font-bold text-slate-700 mb-1">单件收款 (¥)</label>
                         <input type="number" step="0.01" id="dispatch_unit_collected" placeholder="卖了多少钱/件" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
                     </div>
-                    
+
                     <div>
                         <label class="block text-sm font-bold text-slate-700 mb-1">收货人*</label>
                         <input type="text" id="dispatch_receiver" required autocomplete="off" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
                     </div>
-                    
+
                     <div class="mt-6 pt-4 border-t border-slate-100 flex justify-end gap-2">
                         <button type="button" onclick="closeDispatchModal()" class="px-5 py-2 text-sm bg-slate-100 text-slate-600 font-bold rounded-lg hover:bg-slate-200 transition-all">取消</button>
                         <button type="submit" class="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 transition-all">确认出库</button>
@@ -548,10 +548,10 @@ if ($is_initial_admin) {
                     <button onclick="switchSetTab('registration')" id="setTab_registration" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">🌐 注册管理</button>
                     <?php endif; ?>
                 </div>
-                
+
                 <div class="flex-1 p-6 overflow-y-auto">
                     <div id="setPanel_pwd" class="space-y-6">
-                        
+
                         <?php if(!$is_sub_account && empty($currentUser['sec_q1'])): ?>
                         <div class="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
                             <h4 class="font-black text-[15px] text-slate-800 mb-4 pb-3 border-b border-slate-100">🛡️ 绑定密保 (老账号必填)</h4>
@@ -631,7 +631,7 @@ if ($is_initial_admin) {
                             </div>
                         </div>
 
-                        <?php if(!$is_sub_account): ?>
+                        <?php if(!$is_sub_account && !$is_initial_admin): ?>
                         <div class="bg-white border border-red-200 p-6 rounded-xl shadow-sm">
                             <h4 class="font-black text-[15px] text-red-600 mb-4 pb-3 border-b border-red-100">⚠️ 危险注销</h4>
                             <div class="flex gap-3">
@@ -656,7 +656,7 @@ if ($is_initial_admin) {
                                 <label class="flex items-center gap-3"><input type="checkbox" id="master_tab_repair" class="custom-checkbox" <?php if($p_repair==1) echo 'checked'; ?>><span class="text-sm font-bold text-slate-700">🛠️ 售后维修可见</span></label>
                                 <label class="flex items-center gap-3"><input type="checkbox" id="master_tab_repair_done" class="custom-checkbox" <?php if($p_repair_done==1) echo 'checked'; ?>><span class="text-sm font-bold text-slate-700">📦 维修完毕可见</span></label>
                             </div>
-                            
+
                             <h4 class="font-black text-[15px] text-slate-800 mb-4 pb-3 border-b border-slate-100">🔒 仓库保险箱锁设置</h4>
                             <div class="grid grid-cols-2 gap-4 mb-6">
                                 <label class="flex items-center gap-3"><input type="checkbox" id="master_lock_us" class="custom-checkbox" <?php if($l_us==1) echo 'checked'; ?>><span class="text-sm font-bold text-slate-700">🇺🇸 锁定美国仓财务</span></label>
@@ -821,7 +821,7 @@ if ($is_initial_admin) {
                         <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="sub_perm_exp" class="custom-checkbox"><span class="text-sm font-bold text-slate-700">导出当前页数据</span></label>
                         <label class="flex items-center gap-2 cursor-pointer col-span-2 mt-1"><input type="checkbox" id="sub_perm_del" class="custom-checkbox"><span class="text-sm font-bold text-red-600">彻底删除设备 (高危)</span></label>
                     </div>
-                    
+
                     <div class="text-sm font-black text-slate-800 mb-2 border-b border-slate-200 pb-1 mt-3">已售仓历史查询限制</div>
                     <div class="mb-4">
                         <select id="sub_perm_hist" class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-[#8B0000] focus:ring-1 focus:ring-[#8B0000] transition-all text-sm">
@@ -887,7 +887,7 @@ if ($is_initial_admin) {
                             <label class="block text-sm font-bold text-slate-700 mb-1">数量</label>
                             <input type="number" id="form_quantity" name="quantity" value="1" min="1" oninput="updateModalTotals()" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-[#8B0000] focus:ring-1 focus:ring-[#8B0000] transition-all font-bold text-indigo-700">
                         </div>
-                        
+
                         <div class="col-span-2">
                             <label class="block text-sm font-bold text-slate-700 mb-1">配置/规格说明</label>
                             <input type="text" id="form_config_desc" name="config_desc" class="w-full text-sm bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:bg-white focus:border-[#8B0000] focus:ring-1 focus:ring-[#8B0000] transition-all">
@@ -932,32 +932,32 @@ if ($is_initial_admin) {
     function toggleModalFields() {
         const status = document.getElementById('form_status').value;
         const isParts = ['PARTS', 'PARTS_SOLD'].includes(status);
-        
+
         const qtyContainer = document.getElementById('modal_qty_container');
         if(qtyContainer) qtyContainer.style.display = isParts ? 'block' : 'none';
-        
+
         if (!isParts) {
             document.getElementById('form_quantity').value = 1;
         }
 
         const lblCost = document.getElementById('lbl_cost');
         if(lblCost) lblCost.innerText = isParts ? '单件成本 (¥)' : '成本 (¥)';
-        
+
         const lblFreight = document.getElementById('lbl_freight');
         if(lblFreight) lblFreight.innerText = isParts ? '单件运费 (¥)' : '运费 (¥)';
-        
+
         const lblCollected = document.getElementById('lbl_collected');
         if(lblCollected) lblCollected.innerText = isParts ? '单件收款 (¥)' : '收款金额 (¥)';
-        
+
         const totCost = document.getElementById('modal_cost_total');
         if(totCost) totCost.style.display = isParts ? 'block' : 'none';
-        
+
         const totFreight = document.getElementById('modal_freight_total');
         if(totFreight) totFreight.style.display = isParts ? 'block' : 'none';
-        
+
         const totCol = document.getElementById('modal_collected_total');
         if(totCol) totCol.style.display = isParts ? 'block' : 'none';
-        
+
         updateModalTotals();
     }
 
@@ -979,33 +979,33 @@ if ($is_initial_admin) {
     };
 
     const INVENTORY_API_URL = 'api_inventory.php';
-    let currentData = []; 
-    let totalFilteredItems = 0; 
-    let summaryData = null; 
-    let currentSearchTerm = ''; 
-    let currentDateFilter = null; 
-    let userSelectedAll = false; 
-    let currentPage = 1; 
+    let currentData = [];
+    let totalFilteredItems = 0;
+    let summaryData = null;
+    let currentSearchTerm = '';
+    let currentDateFilter = null;
+    let userSelectedAll = false;
+    let currentPage = 1;
     const ITEMS_PER_PAGE = 50;
-    
-    let selectedIdsToRestore = []; 
+
+    let selectedIdsToRestore = [];
     let subAccountsData = []; // 全局存储员工数据，防止 HTML 解析错误
-    
+
     // ⚡ 性能提升：新增全局变量，记录最后一次数据库的数据时间戳
     let lastKnownUpdate = null;
 
-    window.onload = () => { 
-        if(currentTab !== 'NONE') switchTab(currentTab); 
+    window.onload = () => {
+        if(currentTab !== 'NONE') switchTab(currentTab);
     };
 
-    const fmtMoney = (num) => { 
-        return (parseFloat(num) || 0).toString(); 
+    const fmtMoney = (num) => {
+        return (parseFloat(num) || 0).toString();
     };
 
-    const statusFlow = { 
-        'US': { next: 'TRANSIT', nextLabel: '发往国外', icon: '🚢', color: 'blue' }, 
-        'TRANSIT': { next: 'CN_WH', nextLabel: '到达国内仓', icon: '🏭', color: 'indigo' }, 
-        'CN_WH': { next: 'SOLD', nextLabel: '标记已售', icon: '✅', color: 'emerald' }, 
+    const statusFlow = {
+        'US': { next: 'TRANSIT', nextLabel: '发往国外', icon: '🚢', color: 'blue' },
+        'TRANSIT': { next: 'CN_WH', nextLabel: '到达国内仓', icon: '🏭', color: 'indigo' },
+        'CN_WH': { next: 'SOLD', nextLabel: '标记已售', icon: '✅', color: 'emerald' },
         'SOLD': { next: 'CN_WH', nextLabel: '退回国内仓', icon: '🔙', color: 'orange' },
         'PARTS': { next: 'PARTS_SOLD', nextLabel: '配件已售', icon: '🛒', color: 'indigo' },
         'PARTS_SOLD': { next: 'PARTS', nextLabel: '退回配件仓', icon: '🔙', color: 'orange' },
@@ -1017,21 +1017,21 @@ if ($is_initial_admin) {
         document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
         const activeBtn = document.getElementById('tab_' + status);
         if(activeBtn) activeBtn.classList.add('active');
-        
-        currentTab = status; 
+
+        currentTab = status;
         if (isFinanceUnlocked) {
             isFinanceUnlocked = false;
             relockFinance().catch(()=>'');
         }
-        currentDateFilter = null; 
-        userSelectedAll = false; 
-        currentSearchTerm = ''; 
+        currentDateFilter = null;
+        userSelectedAll = false;
+        currentSearchTerm = '';
         currentPage = 1;
         document.getElementById('searchInput').value = '';
-        
+
         if(document.getElementById('tableHead')) document.getElementById('tableHead').innerHTML = '';
         if(document.getElementById('batchActionPanel')) document.getElementById('batchActionPanel').classList.add('hidden');
-        
+
         loadData();
     }
 
@@ -1062,22 +1062,22 @@ if ($is_initial_admin) {
             return alert('您没有查看财务数据的权限！');
         }
         currentLockCallback = callback;
-        currentLockFailCallback = failCallback; 
+        currentLockFailCallback = failCallback;
         document.getElementById('verify_lock_input').value = '';
         document.getElementById('verifyLockModal').classList.remove('hidden');
-        setTimeout(() => { 
-            document.getElementById('verifyLockContent').classList.add('modal-enter-active'); 
-            document.getElementById('verify_lock_input').focus(); 
+        setTimeout(() => {
+            document.getElementById('verifyLockContent').classList.add('modal-enter-active');
+            document.getElementById('verify_lock_input').focus();
         }, 10);
     }
 
     function closeVerifyLockModal(isCancel = true) {
         document.getElementById('verifyLockContent').classList.remove('modal-enter-active');
         setTimeout(() => document.getElementById('verifyLockModal').classList.add('hidden'), 200);
-        
+
         // --- 新增：如果用户主动点击关闭（取消），触发失败回调恢复 UI ---
         if (isCancel === true && currentLockFailCallback) currentLockFailCallback();
-        
+
         currentLockCallback = null;
         currentLockFailCallback = null;
     }
@@ -1088,12 +1088,12 @@ if ($is_initial_admin) {
         const p = document.getElementById('verify_lock_input').value;
         const callback = currentLockCallback;
         const failCallback = currentLockFailCallback;
-        
+
         // 提交密码时关闭弹窗，传 false 表示这不是"取消关闭"
-        closeVerifyLockModal(false); 
-        
-        const fd = new FormData(); 
-        fd.append('action', 'verify_lock'); 
+        closeVerifyLockModal(false);
+
+        const fd = new FormData();
+        fd.append('action', 'verify_lock');
         fd.append('pwd', p);
         try {
             const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
@@ -1104,22 +1104,22 @@ if ($is_initial_admin) {
                 alert(j.message || "保险箱密码错误！");
                 if (failCallback) failCallback(); // --- 新增：密码错误时也触发 UI 恢复 ---
             }
-        } catch (e) { 
-            alert("网络异常验证失败"); 
+        } catch (e) {
+            alert("网络异常验证失败");
             if (failCallback) failCallback();
         }
     }
 
     function toggleFinanceLock() {
-    if(isFinanceUnlocked) { 
-        isFinanceUnlocked = false; 
+    if(isFinanceUnlocked) {
+        isFinanceUnlocked = false;
         relockFinance().catch(()=>'');
         loadData(); // 修复：立即重新拉取带星号掩码的数据
-    } else { 
-        verifyLock(() => { 
-            isFinanceUnlocked = true; 
+    } else {
+        verifyLock(() => {
+            isFinanceUnlocked = true;
             loadData(); // 修复：立即向服务器拉取真实的财务明细，实现“秒出”
-        }); 
+        });
     }
 }
 
@@ -1136,18 +1136,18 @@ if ($is_initial_admin) {
                         <button onclick="toggleFinanceLock()" class="bg-[#8B0000] hover:bg-[#600000] text-white font-bold py-1 px-4 text-[13px] rounded transition-all shadow-sm flex items-center gap-2">🔒 验证密码解锁历史月份看板</button>
                     </div>`;
             } else {
-                if (!summaryData || summaryData.total_count === 0) { 
-                    panel.classList.add('hidden'); 
-                    return; 
+                if (!summaryData || summaryData.total_count === 0) {
+                    panel.classList.add('hidden');
+                    return;
                 }
                 panel.classList.remove('hidden');
-                
+
                 const bC = (l, c, p, iT=false) => {
                     const isA = (currentDateFilter === l) || (iT && !currentDateFilter);
                     const baseClass = "min-w-[150px] flex-none p-3 rounded-xl border transition-all duration-300 cursor-pointer relative overflow-hidden group ";
-                    let activeClass = iT ? (isA ? "bg-slate-800 border-slate-800 text-white shadow-md ring-2 ring-slate-800/20 ring-offset-1" : "bg-white border-slate-200 hover:border-slate-400 hover:shadow-sm") 
+                    let activeClass = iT ? (isA ? "bg-slate-800 border-slate-800 text-white shadow-md ring-2 ring-slate-800/20 ring-offset-1" : "bg-white border-slate-200 hover:border-slate-400 hover:shadow-sm")
                                          : (isA ? "bg-red-50 border-red-200 shadow-sm ring-1 ring-red-500/30" : "bg-white border-slate-100 hover:border-red-200 hover:shadow-sm hover:bg-red-50/30");
-                    
+
                     if (PERM_FINANCE === 0) {
                         const titleCol = iT ? (isA ? 'text-slate-300' : 'text-slate-500') : (isA ? 'text-red-800' : 'text-slate-500');
                         const badgeCol = isA ? (iT ? 'bg-white/20 text-white' : 'bg-red-100 text-red-800') : 'bg-slate-100 text-slate-600';
@@ -1173,24 +1173,24 @@ if ($is_initial_admin) {
                         </div>`;
                     }
                 };
-                
-                let yH = '', mH = ''; 
+
+                let yH = '', mH = '';
                 let hasYears = false, hasMonths = false;
-                Object.keys(summaryData.years).sort().reverse().forEach(y => { 
-                    if (summaryData.years[y].count === 0) return; 
-                    yH += bC(y, summaryData.years[y].count, summaryData.years[y].profit); 
-                    hasYears = true; 
+                Object.keys(summaryData.years).sort().reverse().forEach(y => {
+                    if (summaryData.years[y].count === 0) return;
+                    yH += bC(y, summaryData.years[y].count, summaryData.years[y].profit);
+                    hasYears = true;
                 });
-                Object.keys(summaryData.months).sort().reverse().forEach(m => { 
-                    if (summaryData.months[m].count === 0) return; 
-                    mH += bC(m, summaryData.months[m].count, summaryData.months[m].profit); 
-                    hasMonths = true; 
+                Object.keys(summaryData.months).sort().reverse().forEach(m => {
+                    if (summaryData.months[m].count === 0) return;
+                    mH += bC(m, summaryData.months[m].count, summaryData.months[m].profit);
+                    hasMonths = true;
                 });
-                
+
                 let title = PERM_FINANCE === 0 ? "历史销量看板" : "历史销量与利润看板";
                 let lockBtnHtml = LOCK_TABS[currentTab] === 1 ? `<button onclick="toggleFinanceLock()" class="text-[11px] font-bold text-slate-500 hover:text-red-600 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm transition-all flex items-center gap-1">🔒 重新锁定</button>` : '';
                 let divider = `<div class="w-[1px] bg-slate-200 mx-1 shrink-0 rounded-full my-2"></div>`;
-                
+
                 panel.innerHTML = `
                     <div class="flex justify-between items-center mb-2.5 px-1">
                         <h2 class="text-[13px] font-black text-slate-800 flex items-center gap-2">
@@ -1205,12 +1205,12 @@ if ($is_initial_admin) {
                     </div>`;
             }
         } else {
-            if (!summaryData || summaryData.total_count === 0) { 
-                panel.classList.add('hidden'); 
-                return; 
+            if (!summaryData || summaryData.total_count === 0) {
+                panel.classList.add('hidden');
+                return;
             }
-            if (PERM_FINANCE === 0) { 
-                panel.classList.add('hidden'); 
+            if (PERM_FINANCE === 0) {
+                panel.classList.add('hidden');
             } else {
                 panel.classList.remove('hidden');
                 if (isTabLocked) {
@@ -1221,7 +1221,7 @@ if ($is_initial_admin) {
                 } else {
                     const tco = summaryData.tc + summaryData.tf;
                     let lockBtnHtml = LOCK_TABS[currentTab] === 1 ? `<button onclick="toggleFinanceLock()" class="text-[11px] font-bold text-slate-500 hover:text-red-600 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm transition-all flex items-center gap-1">🔒 重新锁定</button>` : '';
-                    
+
                     panel.innerHTML = `
                     <div class="flex justify-between items-center mb-2.5 px-1">
                         <h2 class="text-[13px] font-black text-slate-800 flex items-center gap-2">
@@ -1237,7 +1237,7 @@ if ($is_initial_admin) {
                             </div>
                             <div class="text-[17px] font-black text-slate-800 tracking-tight mt-1">${fmtMoney(summaryData.tc)}</div>
                         </div>
-                        
+
                         <div class="min-w-[150px] flex-none p-3 rounded-xl border border-slate-200 bg-white shadow-sm hover:border-slate-300 transition-all group">
                             <div class="flex justify-between items-center mb-1">
                                 <span class="text-[11px] font-bold text-slate-500 tracking-wider">总运费</span>
@@ -1245,7 +1245,7 @@ if ($is_initial_admin) {
                             </div>
                             <div class="text-[17px] font-black text-slate-800 tracking-tight mt-1">${fmtMoney(summaryData.tf)}</div>
                         </div>
-                        
+
                         <div class="min-w-[150px] flex-none p-3 rounded-xl border border-slate-800 bg-slate-800 shadow-md ring-2 ring-slate-800/20 ring-offset-1">
                             <div class="flex justify-between items-center mb-1">
                                 <span class="text-[11px] font-bold text-slate-300 tracking-wider">沉没总金额</span>
@@ -1263,31 +1263,31 @@ if ($is_initial_admin) {
         if(currentTab === 'NONE') return;
         const tb = document.getElementById('tableBody');
         tb.innerHTML = '<tr><td colspan="14" class="text-center py-16 text-slate-400 font-medium">正在与服务器同步检索...</td></tr>';
-        
+
         try {
-            const params = new URLSearchParams({ 
-                action: 'list', 
-                status: currentTab, 
-                keyword: currentSearchTerm, 
-                dateFilter: currentDateFilter || '', 
-                page: currentPage, 
-                limit: ITEMS_PER_PAGE, 
-                unlocked: isFinanceUnlocked ? '1' : '0' 
+            const params = new URLSearchParams({
+                action: 'list',
+                status: currentTab,
+                keyword: currentSearchTerm,
+                dateFilter: currentDateFilter || '',
+                page: currentPage,
+                limit: ITEMS_PER_PAGE,
+                unlocked: isFinanceUnlocked ? '1' : '0'
             });
             const r = await apiFetch(`${INVENTORY_API_URL}?${params.toString()}`);
             const j = await r.json();
-            
-            if (j.status === 'success') { 
-                currentData = j.data; 
-                totalFilteredItems = parseInt(j.total); 
-                summaryData = j.summary; 
-                renderSummaryPanels(); 
-                renderTable(); 
-            } else { 
+
+            if (j.status === 'success') {
+                currentData = j.data;
+                totalFilteredItems = parseInt(j.total);
+                summaryData = j.summary;
+                renderSummaryPanels();
+                renderTable();
+            } else {
                 tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">${escapeHTML(j.message || '请求失败')}</td></tr>`;
             }
-        } catch (e) { 
-            tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">网络异常或环境配置错误，请求未能成功</td></tr>`; 
+        } catch (e) {
+            tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">网络异常或环境配置错误，请求未能成功</td></tr>`;
         }
     }
 
@@ -1295,42 +1295,42 @@ if ($is_initial_admin) {
         const hd = document.getElementById('tableHead');
         const tb = document.getElementById('tableBody');
         const pg = document.getElementById('paginationPanel');
-        
+
         let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked);
         let showF = (PERM_FINANCE === 1) && !isTabLocked;
         let isSoldView = ['SOLD', 'PARTS_SOLD', 'REPAIR_DONE'].includes(currentTab);
         let isPartsView = ['PARTS', 'PARTS_SOLD'].includes(currentTab);
-        
+
         let ht = `<tr>`;
         if(PERM_EDIT === 1 || PERM_DELETE === 1) {
             ht += `<th class="px-3 py-2.5 w-10 text-center"><input type="checkbox" id="selectAllCheckbox" onchange="toggleAllCheckboxes()" class="custom-checkbox"></th>`;
         }
-        
+
         ht += `<th class="px-3 py-2.5 text-center whitespace-nowrap font-bold">序号</th>
                <th class="px-3 py-2.5 text-center whitespace-nowrap font-bold">入库日期</th>
                <th class="px-3 py-2.5 text-center whitespace-nowrap font-bold">批次</th>
                <th class="px-3 py-2.5 whitespace-nowrap font-bold">编号/型号</th>
                <th class="px-3 py-2.5 whitespace-nowrap font-bold">配置/规格</th>`;
-               
+
         if(isPartsView) {
             ht += `<th class="px-3 py-2.5 text-center whitespace-nowrap font-bold text-indigo-700">数量</th>`;
         }
-        
+
         if(showF) {
             let costLabel = isPartsView ? "单件成本(¥)" : "成本(¥)";
             let freightLabel = isPartsView ? "单件运费(¥)" : "运费(¥)";
             ht += `<th class="px-5 py-2.5 text-right whitespace-nowrap font-bold">${costLabel}</th>
                    <th class="px-5 py-2.5 text-right whitespace-nowrap font-bold pr-6">${freightLabel}</th>`;
         }
-        
+
         let collectedLabel = isPartsView ? "单件收款(¥)" : "收款(¥)";
         ht += `<th class="px-3 py-2.5 whitespace-nowrap font-bold">收货人</th>
                <th class="px-3 py-2.5 whitespace-nowrap font-bold">备注</th>
                <th class="px-5 py-2.5 text-right whitespace-nowrap font-bold">${collectedLabel}</th>`;
-        
+
         if(showF) {
-            ht += isSoldView 
-                ? `<th class="px-5 py-2.5 text-right whitespace-nowrap font-bold text-emerald-700">总利润 (¥)</th>` 
+            ht += isSoldView
+                ? `<th class="px-5 py-2.5 text-right whitespace-nowrap font-bold text-emerald-700">总利润 (¥)</th>`
                 : `<th class="px-5 py-2.5 text-right whitespace-nowrap font-bold text-slate-500">沉没总成本(¥)</th>`;
         }
         if(PERM_EDIT === 1 || PERM_DELETE === 1) {
@@ -1340,17 +1340,17 @@ if ($is_initial_admin) {
         hd.innerHTML = ht;
 
         const ti = totalFilteredItems;
-        if (ti === 0) { 
-            tb.innerHTML = '<tr><td colspan="14" class="text-center py-16 text-slate-400 font-medium">没有找到匹配的记录</td></tr>'; 
-            pg.classList.add('hidden'); 
-            return; 
+        if (ti === 0) {
+            tb.innerHTML = '<tr><td colspan="14" class="text-center py-16 text-slate-400 font-medium">没有找到匹配的记录</td></tr>';
+            pg.classList.add('hidden');
+            return;
         }
-        
+
         const tp = Math.ceil(ti / ITEMS_PER_PAGE);
-        if (currentPage > tp && tp > 0) { 
-            currentPage = tp; 
-            loadData(); 
-            return; 
+        if (currentPage > tp && tp > 0) {
+            currentPage = tp;
+            loadData();
+            return;
         }
 
         let h = '';
@@ -1359,13 +1359,13 @@ if ($is_initial_admin) {
             const fi = statusFlow[r.status];
             const qty = parseInt(r.quantity) || 1;
             const rowBg = i % 2 === 0 ? 'bg-white' : 'even:bg-slate-50/40';
-            
+
             let fb = '';
             if (fi && PERM_EDIT === 1) {
                 if (r.status === 'PARTS') {
                     fb = `<button onclick="openDispatchModalById(${r.id})" class="text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded hover:bg-indigo-600 hover:text-white transition-all whitespace-nowrap shadow-sm">🛒 拆分出库</button>`;
                 } else if (r.status === 'CN_WH' && fi.next === 'SOLD') {
-                    const hr = r.receiver && String(r.receiver).trim() !== ''; 
+                    const hr = r.receiver && String(r.receiver).trim() !== '';
                     const hc = parseFloat(r.collected_amount) > 0;
                     if (!hr || !hc) {
                         fb = `<button onclick="alert('拦截提示：发往已售必须填写收货人和收款金额！')" class="text-xs font-bold bg-slate-100 text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded whitespace-nowrap">缺资料</button>`;
@@ -1391,7 +1391,7 @@ if ($is_initial_admin) {
                       <td class="px-5 py-2 text-right font-medium text-slate-500 whitespace-nowrap pr-6">${fmtMoney(uf.toFixed(2))}</td>`;
             }
             let ca = `<td class="px-5 py-2 text-right font-bold text-slate-800 whitespace-nowrap">${fmtMoney(ucol.toFixed(2))}</td>`;
-            
+
             let pco = '';
             if (showF) {
                 if (isSoldView) {
@@ -1403,15 +1403,15 @@ if ($is_initial_admin) {
                     pco = `<td class="px-5 py-2 text-right font-bold text-slate-500 whitespace-nowrap">${fmtMoney(tot)}</td>`;
                 }
             }
-            
+
             let ac = '';
             if (PERM_EDIT === 1 || PERM_DELETE === 1) {
                 let eb = PERM_EDIT === 1 ? `<button onclick="editItemById(${r.id})" class="text-xs font-bold text-[#8B0000] hover:underline px-1 transition-colors">编辑</button>` : '';
                 let db = PERM_DELETE === 1 ? `<button onclick="deleteItem(${r.id})" class="text-xs font-bold text-slate-400 hover:text-red-600 hover:underline px-1 transition-colors">删除</button>` : '';
                 ac = `<td class="px-3 py-2 align-middle text-center"><div class="flex flex-row items-center justify-center gap-1.5">${fb}${eb}${db}</div></td>`;
             }
-            
-            let cb = ''; 
+
+            let cb = '';
             if (PERM_EDIT === 1 || PERM_DELETE === 1) {
                 cb = `<td class="px-3 py-2 text-center"><input type="checkbox" class="row-checkbox custom-checkbox" value="${r.id}" onchange="checkSelection()"></td>`;
             }
@@ -1432,21 +1432,21 @@ if ($is_initial_admin) {
                 ${ac}
             </tr>`;
         });
-        
+
         tb.innerHTML = h;
 
-        if (selectedIdsToRestore.length > 0) { 
-            document.querySelectorAll('.row-checkbox').forEach(cb => { 
-                if (selectedIdsToRestore.includes(cb.value)) cb.checked = true; 
-            }); 
-            selectedIdsToRestore = []; 
+        if (selectedIdsToRestore.length > 0) {
+            document.querySelectorAll('.row-checkbox').forEach(cb => {
+                if (selectedIdsToRestore.includes(cb.value)) cb.checked = true;
+            });
+            selectedIdsToRestore = [];
         }
-        
-        if (ti <= ITEMS_PER_PAGE) { 
-            pg.classList.add('hidden'); 
+
+        if (ti <= ITEMS_PER_PAGE) {
+            pg.classList.add('hidden');
         } else {
-            pg.classList.remove('hidden'); 
-            let sc = (currentPage - 1) * ITEMS_PER_PAGE + 1; 
+            pg.classList.remove('hidden');
+            let sc = (currentPage - 1) * ITEMS_PER_PAGE + 1;
             let ec = Math.min(currentPage * ITEMS_PER_PAGE, ti);
             document.getElementById('pageInfo').innerHTML = `显示 ${sc} 到 ${ec}，共 <span class="font-bold text-[#8B0000]">${ti}</span> 条`;
             document.getElementById('pageControls').innerHTML = `
@@ -1454,179 +1454,179 @@ if ($is_initial_admin) {
                 <span class="text-xs text-slate-500 font-bold px-3 flex items-center">${currentPage} / ${tp}</span>
                 <button onclick="changePage(${currentPage + 1})" class="px-3 py-1.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-all shadow-sm" ${currentPage === tp ? 'disabled' : ''}>下一页</button>`;
         }
-        
+
         if(PERM_EDIT === 1 || PERM_DELETE === 1) checkSelection();
     }
 
-    function toggleAllCheckboxes() { 
-        const a = document.getElementById('selectAllCheckbox'); 
-        if(!a) return; 
-        const c = a.checked; 
-        document.querySelectorAll('.row-checkbox').forEach(b => b.checked = c); 
-        checkSelection(); 
+    function toggleAllCheckboxes() {
+        const a = document.getElementById('selectAllCheckbox');
+        if(!a) return;
+        const c = a.checked;
+        document.querySelectorAll('.row-checkbox').forEach(b => b.checked = c);
+        checkSelection();
     }
-    
+
     function checkSelection() {
-        if(PERM_EDIT === 0 && PERM_DELETE === 0) return; 
-        const b = document.querySelectorAll('.row-checkbox'); 
-        let c = 0; 
+        if(PERM_EDIT === 0 && PERM_DELETE === 0) return;
+        const b = document.querySelectorAll('.row-checkbox');
+        let c = 0;
         b.forEach(x => { if(x.checked) c++; });
-        
-        const sa = document.getElementById('selectAllCheckbox'); 
+
+        const sa = document.getElementById('selectAllCheckbox');
         if(sa) sa.checked = (c > 0 && c === b.length);
-        
+
         const p = document.getElementById('batchActionPanel');
-        if (c > 0) { 
-            p.classList.remove('hidden'); 
-            document.getElementById('selectedCount').innerText = c; 
-            const m = document.getElementById('batchMoveBtn'); 
-            if (m) { 
-                if (statusFlow[currentTab] && currentTab !== 'PARTS') { 
-                    m.innerHTML = `⚡ 批量移至 [${statusFlow[currentTab].nextLabel}]`; 
-                    m.classList.remove('hidden'); 
-                } else { 
-                    m.classList.add('hidden'); 
-                } 
-            } 
-        } else { 
-            p.classList.add('hidden'); 
+        if (c > 0) {
+            p.classList.remove('hidden');
+            document.getElementById('selectedCount').innerText = c;
+            const m = document.getElementById('batchMoveBtn');
+            if (m) {
+                if (statusFlow[currentTab] && currentTab !== 'PARTS') {
+                    m.innerHTML = `⚡ 批量移至 [${statusFlow[currentTab].nextLabel}]`;
+                    m.classList.remove('hidden');
+                } else {
+                    m.classList.add('hidden');
+                }
+            }
+        } else {
+            p.classList.add('hidden');
         }
     }
 
     function openBatchEditModal() {
-        const b = document.querySelectorAll('.row-checkbox'); 
-        let c = 0; 
+        const b = document.querySelectorAll('.row-checkbox');
+        let c = 0;
         b.forEach(x => { if(x.checked) c++; });
         if(c === 0) return alert('请先勾选需要批量编辑的设备！');
-        
+
         document.getElementById('batchEditForm').reset();
-        document.getElementById('batch_batch_no').disabled = true; 
+        document.getElementById('batch_batch_no').disabled = true;
         document.getElementById('batch_config').disabled = true;
-        
-        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked); 
+
+        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked);
         let sF = (PERM_FINANCE === 1) && !isTabLocked;
-        
-        if(document.getElementById('batch_cost_container')) { 
-            document.getElementById('batch_cost_container').classList.toggle('hidden', !sF); 
-            document.getElementById('chk_batch_cost').disabled = !sF; 
-            document.getElementById('batch_cost').disabled = true; 
-            document.getElementById('batch_freight_container').classList.toggle('hidden', !sF); 
-            document.getElementById('chk_batch_freight').disabled = !sF; 
-            document.getElementById('batch_freight').disabled = true; 
+
+        if(document.getElementById('batch_cost_container')) {
+            document.getElementById('batch_cost_container').classList.toggle('hidden', !sF);
+            document.getElementById('chk_batch_cost').disabled = !sF;
+            document.getElementById('batch_cost').disabled = true;
+            document.getElementById('batch_freight_container').classList.toggle('hidden', !sF);
+            document.getElementById('chk_batch_freight').disabled = !sF;
+            document.getElementById('batch_freight').disabled = true;
         }
-        
-        document.getElementById('batch_receiver').disabled = true; 
-        document.getElementById('batch_remarks').disabled = true; 
+
+        document.getElementById('batch_receiver').disabled = true;
+        document.getElementById('batch_remarks').disabled = true;
         document.getElementById('batch_collected_amount').disabled = true;
-        document.getElementById('batchEditModal').classList.remove('hidden'); 
+        document.getElementById('batchEditModal').classList.remove('hidden');
         setTimeout(() => document.getElementById('batchEditContent').classList.add('modal-enter-active'), 10);
     }
-    
-    function closeBatchEditModal() { 
-        document.getElementById('batchEditContent').classList.remove('modal-enter-active'); 
-        setTimeout(() => document.getElementById('batchEditModal').classList.add('hidden'), 200); 
+
+    function closeBatchEditModal() {
+        document.getElementById('batchEditContent').classList.remove('modal-enter-active');
+        setTimeout(() => document.getElementById('batchEditModal').classList.add('hidden'), 200);
     }
 
     async function submitBatchEdit(e) {
-        e.preventDefault(); 
-        const b = document.querySelectorAll('.row-checkbox'); 
-        let ids = []; 
+        e.preventDefault();
+        const b = document.querySelectorAll('.row-checkbox');
+        let ids = [];
         b.forEach(x => { if(x.checked) ids.push(x.value); });
-        
-        const fd = new FormData(document.getElementById('batchEditForm')); 
-        fd.append('action', 'batch_edit'); 
+
+        const fd = new FormData(document.getElementById('batchEditForm'));
+        fd.append('action', 'batch_edit');
         fd.append('ids', ids.join(','));
         fd.append('unlocked', isFinanceUnlocked ? '1' : '0');
-        
-        let hu = false; 
-        ['chk_batch_no', 'chk_batch_config', 'chk_batch_receiver', 'chk_batch_remarks', 'chk_batch_cost', 'chk_batch_freight', 'chk_batch_collected_amount'].forEach(id => { 
-            const el = document.getElementById(id); 
-            if (el && el.checked) hu = true; 
+
+        let hu = false;
+        ['chk_batch_no', 'chk_batch_config', 'chk_batch_receiver', 'chk_batch_remarks', 'chk_batch_cost', 'chk_batch_freight', 'chk_batch_collected_amount'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el && el.checked) hu = true;
         });
-        
+
         if(!hu) return alert("您没有勾选任何需要覆盖的字段！");
         if(!(await sysConfirm(`即将覆盖到选中的 ${ids.length} 个记录上。确认执行吗？`))) return;
-        
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if(j.status === 'success') { 
-                closeBatchEditModal(); 
-                selectedIdsToRestore = ids; 
-                loadData(); 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (er) { 
-            alert("批量编辑失败，网络异常"); 
+
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if(j.status === 'success') {
+                closeBatchEditModal();
+                selectedIdsToRestore = ids;
+                loadData();
+            } else {
+                alert(j.message);
+            }
+        } catch (er) {
+            alert("批量编辑失败，网络异常");
         }
     }
 
     async function executeBatchMove() {
-        const b = document.querySelectorAll('.row-checkbox'); 
-        let ids = []; 
-        b.forEach(x => { if(x.checked) ids.push(x.value); }); 
+        const b = document.querySelectorAll('.row-checkbox');
+        let ids = [];
+        b.forEach(x => { if(x.checked) ids.push(x.value); });
         if(ids.length === 0) return;
-        
+
         if ((currentTab === 'CN_WH' && statusFlow[currentTab].next === 'SOLD') || (currentTab === 'PARTS' && statusFlow[currentTab].next === 'PARTS_SOLD')) {
-            let hm = false; 
-            ids.forEach(id => { 
-                let r = currentData.find(x => x.id == id); 
-                if (r) { 
-                    const hr = r.receiver && String(r.receiver).trim() !== ''; 
-                    const hc = parseFloat(r.collected_amount) > 0; 
-                    if (!hr || !hc) hm = true; 
-                } 
+            let hm = false;
+            ids.forEach(id => {
+                let r = currentData.find(x => x.id == id);
+                if (r) {
+                    const hr = r.receiver && String(r.receiver).trim() !== '';
+                    const hc = parseFloat(r.collected_amount) > 0;
+                    if (!hr || !hc) hm = true;
+                }
             });
             if (hm) return alert('拦截提示：\n选中包含【缺资料】的条目！\n请先补充【收货人】和【收款金额】！');
         }
-        
+
         const ns = statusFlow[currentTab].next;
         if (!(await sysConfirm(`确定将选中的 ${ids.length} 项整体批量流转吗？`))) return;
-        
-        const fd = new FormData(); 
-        fd.append('action', 'batch_update_status'); 
-        fd.append('ids', ids.join(',')); 
+
+        const fd = new FormData();
+        fd.append('action', 'batch_update_status');
+        fd.append('ids', ids.join(','));
         fd.append('status', ns);
-        
-        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-        const sa = document.getElementById('selectAllCheckbox'); 
-        if(sa) sa.checked = false; 
+
+        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        const sa = document.getElementById('selectAllCheckbox');
+        if(sa) sa.checked = false;
         loadData();
     }
 
     async function executeBatchDelete(autoReload = true, skipConfirm = false) {
-        const b = document.querySelectorAll('.row-checkbox'); 
-        let ids = []; 
-        b.forEach(x => { if(x.checked) ids.push(x.value); }); 
+        const b = document.querySelectorAll('.row-checkbox');
+        let ids = [];
+        b.forEach(x => { if(x.checked) ids.push(x.value); });
         if(ids.length === 0) return;
-        
+
         if (!skipConfirm) {
             if (!(await sysConfirm(`⚠️ 危险警告：确定要彻底删除选中的 ${ids.length} 项吗？不可恢复！`))) return;
         }
 
-        const fd = new FormData(); 
-        fd.append('action', 'batch_delete'); 
+        const fd = new FormData();
+        fd.append('action', 'batch_delete');
         fd.append('ids', ids.join(','));
-        
+
         try {
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
             const j = await r.json();
-            
+
             if (j.status === 'success') {
-                const sa = document.getElementById('selectAllCheckbox'); 
-                if(sa) sa.checked = false; 
-                if (autoReload) loadData(); 
+                const sa = document.getElementById('selectAllCheckbox');
+                if(sa) sa.checked = false;
+                if (autoReload) loadData();
             } else {
                 if (j.message && j.message.includes('锁定')) {
                     verifyLock(async () => {
-                        await executeBatchDelete(false, true);     
-                        await relockFinance(); 
-                        isFinanceUnlocked = false; 
-                        loadData(); 
+                        await executeBatchDelete(false, true);
+                        await relockFinance();
+                        isFinanceUnlocked = false;
+                        loadData();
                     });
                 } else {
-                    alert(j.message); 
+                    alert(j.message);
                 }
             }
         } catch (e) {
@@ -1634,39 +1634,39 @@ if ($is_initial_admin) {
         }
     }
 
-    async function updateStatus(id, ns) { 
-        const fd = new FormData(); 
-        fd.append('action', 'update_status'); 
-        fd.append('id', id); 
-        fd.append('status', ns); 
-        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-        loadData(); 
+    async function updateStatus(id, ns) {
+        const fd = new FormData();
+        fd.append('action', 'update_status');
+        fd.append('id', id);
+        fd.append('status', ns);
+        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        loadData();
     }
-    
-    async function deleteItem(id, autoReload = true, skipConfirm = false) { 
+
+    async function deleteItem(id, autoReload = true, skipConfirm = false) {
         if (!skipConfirm) {
-            if(!(await sysConfirm("确定要彻底删除这条记录吗？该操作不可恢复！"))) return; 
+            if(!(await sysConfirm("确定要彻底删除这条记录吗？该操作不可恢复！"))) return;
         }
 
-        const fd = new FormData(); 
-        fd.append('action', 'delete'); 
-        fd.append('id', id); 
+        const fd = new FormData();
+        fd.append('action', 'delete');
+        fd.append('id', id);
         try {
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
             const j = await r.json();
-            
+
             if (j.status === 'success') {
-                if (autoReload) loadData(); 
+                if (autoReload) loadData();
             } else {
                 if (j.message && j.message.includes('锁定')) {
                     verifyLock(async () => {
-                        await deleteItem(id, false, true);           
+                        await deleteItem(id, false, true);
                         await relockFinance();
                         isFinanceUnlocked = false;
-                        loadData(); 
+                        loadData();
                     });
                 } else {
-                    alert(j.message); 
+                    alert(j.message);
                 }
             }
         } catch (e) {
@@ -1679,7 +1679,7 @@ if ($is_initial_admin) {
         let c = parseFloat(document.getElementById('form_unit_cost') ? document.getElementById('form_unit_cost').value : 0) || 0;
         let f = parseFloat(document.getElementById('form_unit_freight') ? document.getElementById('form_unit_freight').value : 0) || 0;
         let a = parseFloat(document.getElementById('form_unit_collected').value) || 0;
-        
+
         if(document.getElementById('modal_cost_total')) document.getElementById('modal_cost_total').innerText = '总成本计: ¥' + (c*qty).toFixed(2);
         if(document.getElementById('modal_freight_total')) document.getElementById('modal_freight_total').innerText = '总运费计: ¥' + (f*qty).toFixed(2);
         if(document.getElementById('modal_collected_total')) document.getElementById('modal_collected_total').innerText = '总收款计: ¥' + (a*qty).toFixed(2);
@@ -1688,34 +1688,34 @@ if ($is_initial_admin) {
     function openModal() {
         if (PERM_ADD === 0) return alert('安全拦截：您没有新增记录的权限！');
         document.getElementById('itemForm').reset();
-        document.getElementById('form_id').value = ''; 
-        document.getElementById('form_updated_at').value = ''; 
+        document.getElementById('form_id').value = '';
+        document.getElementById('form_updated_at').value = '';
         document.getElementById('form_batch_no').value = '';
-        document.getElementById('form_quantity').value = 1; 
-        document.getElementById('form_status').value = currentTab === 'NONE' ? 'US' : currentTab; 
+        document.getElementById('form_quantity').value = 1;
+        document.getElementById('form_status').value = currentTab === 'NONE' ? 'US' : currentTab;
         document.getElementById('form_remarks').value = '';
-        
-        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked); 
+
+        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked);
         let sF = (PERM_FINANCE === 1) && !isTabLocked;
-        
-        if (document.getElementById('modal_cost_container')) { 
-            document.getElementById('modal_cost_container').classList.toggle('hidden', !sF); 
-            document.getElementById('form_unit_cost').disabled = !sF; 
-            document.getElementById('modal_freight_container').classList.toggle('hidden', !sF); 
-            document.getElementById('form_unit_freight').disabled = !sF; 
+
+        if (document.getElementById('modal_cost_container')) {
+            document.getElementById('modal_cost_container').classList.toggle('hidden', !sF);
+            document.getElementById('form_unit_cost').disabled = !sF;
+            document.getElementById('modal_freight_container').classList.toggle('hidden', !sF);
+            document.getElementById('form_unit_freight').disabled = !sF;
         }
-        
+
         toggleModalFields();
-        document.getElementById('modalTitle').innerText = '新增记录'; 
-        document.getElementById('itemModal').classList.remove('hidden'); 
-        setTimeout(() => { 
+        document.getElementById('modalTitle').innerText = '新增记录';
+        document.getElementById('itemModal').classList.remove('hidden');
+        setTimeout(() => {
             document.getElementById('modalContent').classList.add('modal-enter-active');
             document.getElementById('form_service_no').focus();
         }, 10);
     }
-    function editItemById(id) { 
-        const row = currentData.find(x => x.id == id); 
-        if (row) editItem(row); 
+    function editItemById(id) {
+        const row = currentData.find(x => x.id == id);
+        if (row) editItem(row);
     }
 
     function openDispatchModalById(id) {
@@ -1727,78 +1727,78 @@ if ($is_initial_admin) {
     }
     function editItem(row) {
         document.getElementById('modalTitle').innerText = '编辑记录 - ' + row.service_no;
-        document.getElementById('form_id').value = row.id; 
+        document.getElementById('form_id').value = row.id;
         // 修复：提取真实的 updated_at 传递给后端，而非业务流转时间 status_timestamp
-        document.getElementById('form_updated_at').value = row.updated_at || ''; 
-        document.getElementById('form_service_no').value = row.service_no; 
+        document.getElementById('form_updated_at').value = row.updated_at || '';
+        document.getElementById('form_service_no').value = row.service_no;
         document.getElementById('form_batch_no').value = row.batch_no || '';
-        document.getElementById('form_status').value = row.status; 
+        document.getElementById('form_status').value = row.status;
         document.getElementById('form_quantity').value = row.quantity || 1;
-        document.getElementById('form_config_desc').value = row.config_desc; 
+        document.getElementById('form_config_desc').value = row.config_desc;
         document.getElementById('form_remarks').value = row.remarks || '';
-        
-        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked); 
+
+        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked);
         let sF = (PERM_FINANCE === 1) && !isTabLocked;
         const qty = row.quantity > 0 ? row.quantity : 1;
-        
+
         if (document.getElementById('modal_cost_container')) {
-            document.getElementById('modal_cost_container').classList.toggle('hidden', !sF); 
+            document.getElementById('modal_cost_container').classList.toggle('hidden', !sF);
             document.getElementById('form_unit_cost').disabled = !sF;
-            document.getElementById('modal_freight_container').classList.toggle('hidden', !sF); 
+            document.getElementById('modal_freight_container').classList.toggle('hidden', !sF);
             document.getElementById('form_unit_freight').disabled = !sF;
-            
-            if (sF) { 
+
+            if (sF) {
                 let c_val = (row.cost_rmb / qty).toFixed(2).replace(/\.00$/, '');
                 let f_val = (row.freight / qty).toFixed(2).replace(/\.00$/, '');
-                document.getElementById('form_unit_cost').value = (c_val === '0') ? '' : c_val; 
-                document.getElementById('form_unit_freight').value = (f_val === '0') ? '' : f_val; 
+                document.getElementById('form_unit_cost').value = (c_val === '0') ? '' : c_val;
+                document.getElementById('form_unit_freight').value = (f_val === '0') ? '' : f_val;
             }
         }
-        
-        document.getElementById('form_receiver').value = row.receiver; 
+
+        document.getElementById('form_receiver').value = row.receiver;
         let a_val = (row.collected_amount / qty).toFixed(2).replace(/\.00$/, '');
         document.getElementById('form_unit_collected').value = (a_val === '0') ? '' : a_val;
-        
+
         toggleModalFields();
-        document.getElementById('itemModal').classList.remove('hidden'); 
-        setTimeout(() => { 
+        document.getElementById('itemModal').classList.remove('hidden');
+        setTimeout(() => {
             document.getElementById('modalContent').classList.add('modal-enter-active');
             document.getElementById('form_service_no').focus();
         }, 10);
     }
-    
-    function closeModal() { 
-        document.getElementById('modalContent').classList.remove('modal-enter-active'); 
-        setTimeout(() => document.getElementById('itemModal').classList.add('hidden'), 200); 
+
+    function closeModal() {
+        document.getElementById('modalContent').classList.remove('modal-enter-active');
+        setTimeout(() => document.getElementById('itemModal').classList.add('hidden'), 200);
     }
-    
+
     async function saveItem(e) {
         e.preventDefault();
-        
+
         const btn = e.target.querySelector('button[type="submit"]');
         if(btn) { btn.disabled = true; btn.innerText = '保存中...'; btn.classList.add('opacity-50', 'cursor-not-allowed'); }
-        
+
         try {
             const fd = new FormData(document.getElementById('itemForm'));
             const qty = parseInt(fd.get('quantity')) || 1;
             const uc = parseFloat(fd.get('unit_cost')) || 0;
             const uf = parseFloat(fd.get('unit_freight')) || 0;
             const ucol = parseFloat(fd.get('unit_collected')) || 0;
-            
+
             fd.append('cost_rmb', (uc * qty));
             fd.append('freight', (uf * qty));
             fd.append('collected_amount', (ucol * qty));
             fd.append('action', 'save');
-            fd.append('unlocked', isFinanceUnlocked ? '1' : '0'); 
-           
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
+            fd.append('unlocked', isFinanceUnlocked ? '1' : '0');
+
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
             const j = await r.json();
-            
-            if (j.status === 'success') { 
-                closeModal(); 
-                loadData(); 
-            } else { 
-                alert(j.message); 
+
+            if (j.status === 'success') {
+                closeModal();
+                loadData();
+            } else {
+                alert(j.message);
             }
         } catch (error) {
             alert('网络请求异常，保存失败');
@@ -1816,25 +1816,25 @@ if ($is_initial_admin) {
         document.getElementById('dispatch_unit_collected').value = '';
         document.getElementById('dispatch_receiver').value = '';
         document.getElementById('dispatchTitle').innerText = '🛒 配件出库 - ' + name;
-        
+
         document.getElementById('dispatchModal').classList.remove('hidden');
-        setTimeout(() => { 
+        setTimeout(() => {
             document.getElementById('dispatchContent').classList.add('modal-enter-active');
-            document.getElementById('dispatch_qty').focus(); 
+            document.getElementById('dispatch_qty').focus();
         }, 10);
     }
-    
-    function closeDispatchModal() { 
-        document.getElementById('dispatchContent').classList.remove('modal-enter-active'); 
-        setTimeout(() => document.getElementById('dispatchModal').classList.add('hidden'), 200); 
+
+    function closeDispatchModal() {
+        document.getElementById('dispatchContent').classList.remove('modal-enter-active');
+        setTimeout(() => document.getElementById('dispatchModal').classList.add('hidden'), 200);
     }
 
     async function submitDispatch(e) {
         e.preventDefault();
-        
+
         const btn = e.target.querySelector('button[type="submit"]');
         if(btn) { btn.disabled = true; btn.innerText = '出库中...'; btn.classList.add('opacity-50', 'cursor-not-allowed'); }
-        
+
         try {
             const fd = new FormData();
             fd.append('action', 'dispatch_part');
@@ -1845,11 +1845,11 @@ if ($is_initial_admin) {
 
             const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
             const j = await r.json();
-            if(j.status === 'success') { 
-                closeDispatchModal(); 
-                loadData(); 
-            } else { 
-                alert(j.message); 
+            if(j.status === 'success') {
+                closeDispatchModal();
+                loadData();
+            } else {
+                alert(j.message);
             }
         } catch (error) {
             alert('网络请求异常，出库失败');
@@ -1858,7 +1858,7 @@ if ($is_initial_admin) {
         }
     }
 
-    function openSettingsModal() { 
+    function openSettingsModal() {
         // --- 新增：每次打开设置面板时，强制把复选框恢复到真实的全局变量状态 ---
         if (!IS_SUB_ACCOUNT) {
             // 1. 恢复可见性配置
@@ -1883,32 +1883,32 @@ if ($is_initial_admin) {
         }
         // -------------------------------------------------------------------
 
-        document.getElementById('settingsModal').classList.remove('hidden'); 
-        setTimeout(() => document.getElementById('settingsContent').classList.add('modal-enter-active'), 10); 
-        switchSetTab('pwd'); 
+        document.getElementById('settingsModal').classList.remove('hidden');
+        setTimeout(() => document.getElementById('settingsContent').classList.add('modal-enter-active'), 10);
+        switchSetTab('pwd');
     }
-    
-    function closeSettingsModal() { 
-        document.getElementById('settingsContent').classList.remove('modal-enter-active'); 
-        setTimeout(() => document.getElementById('settingsModal').classList.add('hidden'), 200); 
+
+    function closeSettingsModal() {
+        document.getElementById('settingsContent').classList.remove('modal-enter-active');
+        setTimeout(() => document.getElementById('settingsModal').classList.add('hidden'), 200);
     }
-    
-    function switchSetTab(t) { 
-        document.querySelectorAll('.set-tab-btn').forEach(b => { 
-            b.classList.remove('bg-slate-800', 'text-white', 'shadow-md'); 
-            b.classList.add('text-slate-500', 'hover:bg-slate-100'); 
-        }); 
-        const activeTab = document.getElementById('setTab_' + t); 
-        if(activeTab) { 
-            activeTab.classList.remove('text-slate-500', 'hover:bg-slate-100'); 
-            activeTab.classList.add('bg-slate-800', 'text-white', 'shadow-md'); 
-        } 
-        document.getElementById('setPanel_pwd').classList.add('hidden'); 
-        if (document.getElementById('setPanel_tabs')) document.getElementById('setPanel_tabs').classList.add('hidden'); 
-        if (document.getElementById('setPanel_sub')) document.getElementById('setPanel_sub').classList.add('hidden'); 
+
+    function switchSetTab(t) {
+        document.querySelectorAll('.set-tab-btn').forEach(b => {
+            b.classList.remove('bg-slate-800', 'text-white', 'shadow-md');
+            b.classList.add('text-slate-500', 'hover:bg-slate-100');
+        });
+        const activeTab = document.getElementById('setTab_' + t);
+        if(activeTab) {
+            activeTab.classList.remove('text-slate-500', 'hover:bg-slate-100');
+            activeTab.classList.add('bg-slate-800', 'text-white', 'shadow-md');
+        }
+        document.getElementById('setPanel_pwd').classList.add('hidden');
+        if (document.getElementById('setPanel_tabs')) document.getElementById('setPanel_tabs').classList.add('hidden');
+        if (document.getElementById('setPanel_sub')) document.getElementById('setPanel_sub').classList.add('hidden');
         if (document.getElementById('setPanel_registration')) document.getElementById('setPanel_registration').classList.add('hidden');
-        document.getElementById('setPanel_' + t).classList.remove('hidden'); 
-        if (t === 'sub') loadSubAccounts(); 
+        document.getElementById('setPanel_' + t).classList.remove('hidden');
+        if (t === 'sub') loadSubAccounts();
         if (t === 'registration') loadRegistrationSettings();
     }
 
@@ -1990,265 +1990,265 @@ if ($is_initial_admin) {
         if (result.status === 'success') await loadRegistrationSettings();
         else alert(result.message || '撤销失败');
     }
-    
-    async function saveSecQuestions() { 
-        const fd = new FormData(); 
-        fd.append('action', 'update_sec_questions'); 
-        fd.append('pwd', document.getElementById('my_sec_pwd').value); 
-        fd.append('q1', document.getElementById('my_q1').value); 
-        fd.append('a1', document.getElementById('my_a1').value); 
-        fd.append('q2', document.getElementById('my_q2').value); 
-        fd.append('a2', document.getElementById('my_a2').value); 
-        fd.append('q3', document.getElementById('my_q3').value); 
-        fd.append('a3', document.getElementById('my_a3').value); 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                alert('密保问题绑定成功！页面将刷新。'); 
-                window.location.reload(); 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (e) { 
-            alert("提交绑定失败，网络异常"); 
-        } 
+
+    async function saveSecQuestions() {
+        const fd = new FormData();
+        fd.append('action', 'update_sec_questions');
+        fd.append('pwd', document.getElementById('my_sec_pwd').value);
+        fd.append('q1', document.getElementById('my_q1').value);
+        fd.append('a1', document.getElementById('my_a1').value);
+        fd.append('q2', document.getElementById('my_q2').value);
+        fd.append('a2', document.getElementById('my_a2').value);
+        fd.append('q3', document.getElementById('my_q3').value);
+        fd.append('a3', document.getElementById('my_a3').value);
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('密保问题绑定成功！页面将刷新。');
+                window.location.reload();
+            } else {
+                alert(j.message);
+            }
+        } catch (e) {
+            alert("提交绑定失败，网络异常");
+        }
     }
-    
-    function saveMasterTabs() { 
+
+    function saveMasterTabs() {
     verifyLock(async () => {
-        const fd = new FormData(); 
-        fd.append('action', 'update_master_tabs'); 
-        ['us', 'transit', 'cn', 'sold', 'repair', 'repair_done', 'parts', 'parts_sold'].forEach(x => { 
-            if (document.getElementById('master_tab_' + x) && document.getElementById('master_tab_' + x).checked) fd.append('p_' + x, '1'); 
-            if (document.getElementById('master_lock_' + x) && document.getElementById('master_lock_' + x).checked) fd.append('l_' + x, '1'); 
-        }); 
-        
+        const fd = new FormData();
+        fd.append('action', 'update_master_tabs');
+        ['us', 'transit', 'cn', 'sold', 'repair', 'repair_done', 'parts', 'parts_sold'].forEach(x => {
+            if (document.getElementById('master_tab_' + x) && document.getElementById('master_tab_' + x).checked) fd.append('p_' + x, '1');
+            if (document.getElementById('master_lock_' + x) && document.getElementById('master_lock_' + x).checked) fd.append('l_' + x, '1');
+        });
+
         // 把输入的解锁密码传给后端
         const pwd = document.getElementById('verify_lock_input').value;
         fd.append('lock_pwd', pwd);
 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                alert('系统全局配置已保存！将立即刷新生效。'); 
-                window.location.reload(); 
-            } else { 
-                alert(j.message); 
-                window.location.reload(); 
-            } 
-        } catch (e) { 
-            alert("保存失败"); 
-            window.location.reload(); 
-        } 
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('系统全局配置已保存！将立即刷新生效。');
+                window.location.reload();
+            } else {
+                alert(j.message);
+                window.location.reload();
+            }
+        } catch (e) {
+            alert("保存失败");
+            window.location.reload();
+        }
     }, () => {
         // --- 核心修复：当用户取消输入或密码错误时，立即刷新页面，把刚才乱改的复选框强行恢复到数据库里的真实状态！ ---
         window.location.reload();
     });
 }
-    
-    async function saveTimeout() { 
-        const m = document.getElementById('my_timeout').value; 
-        const fd = new FormData(); 
-        fd.append('action', 'set_timeout'); 
-        fd.append('minutes', m); 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
+
+    async function saveTimeout() {
+        const m = document.getElementById('my_timeout').value;
+        const fd = new FormData();
+        fd.append('action', 'set_timeout');
+        fd.append('minutes', m);
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
             const j = await r.json();
             if (j.status === 'success') {
-                alert('自动锁定时间设置成功！'); 
-                TIMEOUT_MINUTES = parseInt(m); 
+                alert('自动锁定时间设置成功！');
+                TIMEOUT_MINUTES = parseInt(m);
                 // 👇 核心修复：调用新的标签页活跃度函数，删掉旧的错误函数
-                updateTabActivity(); 
+                updateTabActivity();
             } else {
                 alert(j.message || '设置失败');
             }
-        } catch (e) { 
-            alert("网络异常，设置失败"); 
-        } 
+        } catch (e) {
+            alert("网络异常，设置失败");
+        }
     }
-    
-    async function changeMyPwd() { 
-        const o = document.getElementById('my_old_pwd').value; 
-        const n = document.getElementById('my_new_pwd').value; 
-        const c = document.getElementById('my_new_pwd_confirm').value; 
-        if (!o || !n || !c) return alert("密码框都不能为空！"); 
-        if (n !== c) return alert("两次输入的新密码不一致，请重新输入！"); 
-        const fd = new FormData(); 
-        fd.append('action', 'change_my_password'); 
-        fd.append('old_pwd', o); 
-        fd.append('new_pwd', n); 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                alert('登录密码修改成功！下次请使用新密码登录。'); 
-                document.getElementById('my_old_pwd').value = ''; 
-                document.getElementById('my_new_pwd').value = ''; 
-                document.getElementById('my_new_pwd_confirm').value = ''; 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (e) { 
-            alert("修改失败"); 
-        } 
+
+    async function changeMyPwd() {
+        const o = document.getElementById('my_old_pwd').value;
+        const n = document.getElementById('my_new_pwd').value;
+        const c = document.getElementById('my_new_pwd_confirm').value;
+        if (!o || !n || !c) return alert("密码框都不能为空！");
+        if (n !== c) return alert("两次输入的新密码不一致，请重新输入！");
+        const fd = new FormData();
+        fd.append('action', 'change_my_password');
+        fd.append('old_pwd', o);
+        fd.append('new_pwd', n);
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('登录密码修改成功！下次请使用新密码登录。');
+                document.getElementById('my_old_pwd').value = '';
+                document.getElementById('my_new_pwd').value = '';
+                document.getElementById('my_new_pwd_confirm').value = '';
+            } else {
+                alert(j.message);
+            }
+        } catch (e) {
+            alert("修改失败");
+        }
     }
-    
-    async function saveLockPwd() { 
-        const o = document.getElementById('my_old_lock').value; 
-        const n = document.getElementById('my_lock_pwd').value; 
-        const fd = new FormData(); 
-        fd.append('action', 'set_lock'); 
-        fd.append('old_lock', o); 
-        fd.append('new_pwd', n); 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                alert('保险箱密码更新成功！'); 
-                document.getElementById('my_old_lock').value = ''; 
-                document.getElementById('my_lock_pwd').value = ''; 
-                isFinanceUnlocked = false; 
-                renderSummaryPanels(); 
-                renderTable(); 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (e) { 
-            alert("保存失败"); 
-        } 
+
+    async function saveLockPwd() {
+        const o = document.getElementById('my_old_lock').value;
+        const n = document.getElementById('my_lock_pwd').value;
+        const fd = new FormData();
+        fd.append('action', 'set_lock');
+        fd.append('old_lock', o);
+        fd.append('new_pwd', n);
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('保险箱密码更新成功！');
+                document.getElementById('my_old_lock').value = '';
+                document.getElementById('my_lock_pwd').value = '';
+                isFinanceUnlocked = false;
+                renderSummaryPanels();
+                renderTable();
+            } else {
+                alert(j.message);
+            }
+        } catch (e) {
+            alert("保存失败");
+        }
     }
-    
-    async function deleteMyAccount() { 
-        const p = document.getElementById('my_delete_pwd').value; 
-        if (!p) return alert("必须输入登录密码确认身份！"); 
-        if (!confirm("⚠️ 危险警告：确认要永久注销并清空所有数据吗？此操作无法撤销！")) return; 
-        if (!confirm("再次最后确认：数据一旦删除将永远丢失！真的要注销吗？")) return; 
-        const fd = new FormData(); 
-        fd.append('action', 'delete_my_account'); 
-        fd.append('pwd', p); 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                alert('账号已成功注销。再见。'); 
-                window.location.href = 'login.php'; 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (e) { 
-            alert("注销失败"); 
-        } 
+
+    async function deleteMyAccount() {
+        const p = document.getElementById('my_delete_pwd').value;
+        if (!p) return alert("必须输入登录密码确认身份！");
+        if (!confirm("⚠️ 危险警告：确认要永久注销并清空所有数据吗？此操作无法撤销！")) return;
+        if (!confirm("再次最后确认：数据一旦删除将永远丢失！真的要注销吗？")) return;
+        const fd = new FormData();
+        fd.append('action', 'delete_my_account');
+        fd.append('pwd', p);
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('账号已成功注销。再见。');
+                window.location.href = 'login.php';
+            } else {
+                alert(j.message);
+            }
+        } catch (e) {
+            alert("注销失败");
+        }
     }
-    
-    async function openLockRecModal() { 
-        try { 
-            const fd = new FormData(); 
-            fd.append('action', 'get_sec_questions'); 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                document.getElementById('lr_q1').innerText = j.data.sec_q1; 
-                document.getElementById('lr_q2').innerText = j.data.sec_q2; 
-                document.getElementById('lr_q3').innerText = j.data.sec_q3; 
-                document.getElementById('lr_a1').value = ''; 
-                document.getElementById('lr_a2').value = ''; 
-                document.getElementById('lr_a3').value = ''; 
-                document.getElementById('lr_login_pwd').value = ''; 
-                document.getElementById('lr_new_lock').value = ''; 
-                document.getElementById('lockRecModal').classList.remove('hidden'); 
-                setTimeout(() => document.getElementById('lockRecContent').classList.add('modal-enter-active'), 10); 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (e) { 
-            alert("网络异常，无法获取密保问题"); 
-        } 
+
+    async function openLockRecModal() {
+        try {
+            const fd = new FormData();
+            fd.append('action', 'get_sec_questions');
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                document.getElementById('lr_q1').innerText = j.data.sec_q1;
+                document.getElementById('lr_q2').innerText = j.data.sec_q2;
+                document.getElementById('lr_q3').innerText = j.data.sec_q3;
+                document.getElementById('lr_a1').value = '';
+                document.getElementById('lr_a2').value = '';
+                document.getElementById('lr_a3').value = '';
+                document.getElementById('lr_login_pwd').value = '';
+                document.getElementById('lr_new_lock').value = '';
+                document.getElementById('lockRecModal').classList.remove('hidden');
+                setTimeout(() => document.getElementById('lockRecContent').classList.add('modal-enter-active'), 10);
+            } else {
+                alert(j.message);
+            }
+        } catch (e) {
+            alert("网络异常，无法获取密保问题");
+        }
     }
-    
-    function closeLockRecModal() { 
-        document.getElementById('lockRecContent').classList.remove('modal-enter-active'); 
-        setTimeout(() => document.getElementById('lockRecModal').classList.add('hidden'), 200); 
+
+    function closeLockRecModal() {
+        document.getElementById('lockRecContent').classList.remove('modal-enter-active');
+        setTimeout(() => document.getElementById('lockRecModal').classList.add('hidden'), 200);
     }
-    
-    async function submitLockRec() { 
-        const a1 = document.getElementById('lr_a1').value.trim(); 
-        const a2 = document.getElementById('lr_a2').value.trim(); 
-        const a3 = document.getElementById('lr_a3').value.trim(); 
-        if (!a1 || !a2 || !a3) return alert("必须回答全部三个密保问题！"); 
-        const lp = document.getElementById('lr_login_pwd').value; 
-        if (!lp) return alert("必须验证您的登录密码！"); 
-        const fd = new FormData(); 
-        fd.append('action', 'reset_lock_with_sec'); 
-        fd.append('a1', a1); 
-        fd.append('a2', a2); 
-        fd.append('a3', a3); 
-        fd.append('login_pwd', lp); 
-        fd.append('new_lock', document.getElementById('lr_new_lock').value); 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                alert('保险箱密码已强制重置成功！'); 
-                closeLockRecModal(); 
-                isFinanceUnlocked = false; 
-                renderSummaryPanels(); 
-                renderTable(); 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (e) { 
-            alert("重置失败，网络异常"); 
-        } 
+
+    async function submitLockRec() {
+        const a1 = document.getElementById('lr_a1').value.trim();
+        const a2 = document.getElementById('lr_a2').value.trim();
+        const a3 = document.getElementById('lr_a3').value.trim();
+        if (!a1 || !a2 || !a3) return alert("必须回答全部三个密保问题！");
+        const lp = document.getElementById('lr_login_pwd').value;
+        if (!lp) return alert("必须验证您的登录密码！");
+        const fd = new FormData();
+        fd.append('action', 'reset_lock_with_sec');
+        fd.append('a1', a1);
+        fd.append('a2', a2);
+        fd.append('a3', a3);
+        fd.append('login_pwd', lp);
+        fd.append('new_lock', document.getElementById('lr_new_lock').value);
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('保险箱密码已强制重置成功！');
+                closeLockRecModal();
+                isFinanceUnlocked = false;
+                renderSummaryPanels();
+                renderTable();
+            } else {
+                alert(j.message);
+            }
+        } catch (e) {
+            alert("重置失败，网络异常");
+        }
     }
-    
-    function openSubLockRecModal() { 
-        document.getElementById('sub_lr_login_pwd').value = ''; 
-        document.getElementById('sub_lr_new_lock').value = ''; 
-        document.getElementById('subLockRecModal').classList.remove('hidden'); 
-        setTimeout(() => document.getElementById('subLockRecContent').classList.add('modal-enter-active'), 10); 
+
+    function openSubLockRecModal() {
+        document.getElementById('sub_lr_login_pwd').value = '';
+        document.getElementById('sub_lr_new_lock').value = '';
+        document.getElementById('subLockRecModal').classList.remove('hidden');
+        setTimeout(() => document.getElementById('subLockRecContent').classList.add('modal-enter-active'), 10);
     }
-    
-    function closeSubLockRecModal() { 
-        document.getElementById('subLockRecContent').classList.remove('modal-enter-active'); 
-        setTimeout(() => document.getElementById('subLockRecModal').classList.add('hidden'), 200); 
+
+    function closeSubLockRecModal() {
+        document.getElementById('subLockRecContent').classList.remove('modal-enter-active');
+        setTimeout(() => document.getElementById('subLockRecModal').classList.add('hidden'), 200);
     }
-    
-    async function submitSubLockRec() { 
-        const lp = document.getElementById('sub_lr_login_pwd').value; 
-        if (!lp) return alert("必须输入您的登录密码！"); 
-        const fd = new FormData(); 
-        fd.append('action', 'reset_sub_lock'); 
-        fd.append('login_pwd', lp); 
-        fd.append('new_lock', document.getElementById('sub_lr_new_lock').value); 
-        try { 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-            const j = await r.json(); 
-            if (j.status === 'success') { 
-                alert('您的保险箱密码已重置成功！'); 
-                closeSubLockRecModal(); 
-                isFinanceUnlocked = false; 
-                renderSummaryPanels(); 
-                renderTable(); 
-            } else { 
-                alert(j.message); 
-            } 
-        } catch (e) { 
-            alert("重置失败，网络异常"); 
-        } 
+
+    async function submitSubLockRec() {
+        const lp = document.getElementById('sub_lr_login_pwd').value;
+        if (!lp) return alert("必须输入您的登录密码！");
+        const fd = new FormData();
+        fd.append('action', 'reset_sub_lock');
+        fd.append('login_pwd', lp);
+        fd.append('new_lock', document.getElementById('sub_lr_new_lock').value);
+        try {
+            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const j = await r.json();
+            if (j.status === 'success') {
+                alert('您的保险箱密码已重置成功！');
+                closeSubLockRecModal();
+                isFinanceUnlocked = false;
+                renderSummaryPanels();
+                renderTable();
+            } else {
+                alert(j.message);
+            }
+        } catch (e) {
+            alert("重置失败，网络异常");
+        }
     }
-    
-    async function loadSubAccounts() { 
-        const r = await apiFetch(INVENTORY_API_URL + '?action=list_sub_accounts'); 
-        const j = await r.json(); 
-        let h = ''; 
-        if (j.data.length === 0) { 
-            h = '<tr><td colspan="4" class="p-6 text-center text-slate-400 font-bold">暂无员工账户</td></tr>'; 
-        } else { 
+
+    async function loadSubAccounts() {
+        const r = await apiFetch(INVENTORY_API_URL + '?action=list_sub_accounts');
+        const j = await r.json();
+        let h = '';
+        if (j.data.length === 0) {
+            h = '<tr><td colspan="4" class="p-6 text-center text-slate-400 font-bold">暂无员工账户</td></tr>';
+        } else {
             subAccountsData = j.data; // <--- 关键修复：把返回的员工数据存到全局，防止 HTML 解析时卡死
-            j.data.forEach(u => { 
-                let histLabel = u.perm_history_view == 999 ? '全部' : (u.perm_history_view == 6 ? '半年' : '3个月'); 
+            j.data.forEach(u => {
+                let histLabel = u.perm_history_view == 999 ? '全部' : (u.perm_history_view == 6 ? '半年' : '3个月');
                 h += `<tr class="hover:bg-slate-50 transition-all">
                         <td class="p-3 border-b font-bold text-slate-700">${escapeHTML(u.username)}</td>
                         <td class="p-3 border-b text-center">${u.perm_finance == 1 ? '✅' : '❌'}</td>
@@ -2257,90 +2257,90 @@ if ($is_initial_admin) {
                             <button onclick="editSubAcc(${u.id})" class="text-[#8B0000] hover:underline px-2 text-sm font-bold transition-all">设置</button>
                             <button onclick="delSubAcc(${u.id})" class="text-red-500 hover:text-red-700 hover:underline px-2 text-sm font-bold transition-all">删除</button>
                         </td>
-                      </tr>`; 
-            }); 
-        } 
-        document.getElementById('subAccTable').innerHTML = h; 
+                      </tr>`;
+            });
+        }
+        document.getElementById('subAccTable').innerHTML = h;
     }
-    
-    function openSubModal() { 
-        document.getElementById('sub_id').value = ''; 
-        document.getElementById('sub_user').value = ''; 
-        document.getElementById('sub_pass').value = ''; 
+
+    function openSubModal() {
+        document.getElementById('sub_id').value = '';
+        document.getElementById('sub_user').value = '';
+        document.getElementById('sub_pass').value = '';
         ['fin', 'edt', 'dl', 'imp', 'add', 'exp', 'us', 'transit', 'cn', 'sold', 'parts', 'parts_sold', 'repair', 'repair_done'].forEach(x => {
             const cb = document.getElementById('sub_perm_' + x);
             if(cb) cb.checked = true;
-        }); 
-        document.getElementById('sub_perm_del').checked = false; 
-        document.getElementById('sub_perm_hist').value = "999"; 
-        document.getElementById('subModalTitle').innerText = '新增员工账户'; 
-        document.getElementById('subModal').classList.remove('hidden'); 
-        setTimeout(() => document.getElementById('subContent').classList.add('modal-enter-active'), 10); 
+        });
+        document.getElementById('sub_perm_del').checked = false;
+        document.getElementById('sub_perm_hist').value = "999";
+        document.getElementById('subModalTitle').innerText = '新增员工账户';
+        document.getElementById('subModal').classList.remove('hidden');
+        setTimeout(() => document.getElementById('subContent').classList.add('modal-enter-active'), 10);
     }
-    
-    function closeSubModal() { 
-        document.getElementById('subContent').classList.remove('modal-enter-active'); 
-        setTimeout(() => document.getElementById('subModal').classList.add('hidden'), 200); 
+
+    function closeSubModal() {
+        document.getElementById('subContent').classList.remove('modal-enter-active');
+        setTimeout(() => document.getElementById('subModal').classList.add('hidden'), 200);
     }
-    
-    function editSubAcc(id) { 
+
+    function editSubAcc(id) {
         const u = subAccountsData.find(x => x.id == id);
         if(!u) return;
 
-        document.getElementById('sub_id').value = u.id; 
-        document.getElementById('sub_user').value = u.username; 
-        document.getElementById('sub_pass').value = ''; 
-        document.getElementById('sub_perm_fin').checked = (u.perm_finance == 1); 
-        document.getElementById('sub_perm_edt').checked = (u.perm_edit == 1); 
-        document.getElementById('sub_perm_del').checked = (u.perm_delete == 1); 
+        document.getElementById('sub_id').value = u.id;
+        document.getElementById('sub_user').value = u.username;
+        document.getElementById('sub_pass').value = '';
+        document.getElementById('sub_perm_fin').checked = (u.perm_finance == 1);
+        document.getElementById('sub_perm_edt').checked = (u.perm_edit == 1);
+        document.getElementById('sub_perm_del').checked = (u.perm_delete == 1);
         if(document.getElementById('sub_perm_dl')) document.getElementById('sub_perm_dl').checked = (u.perm_download_tpl == 1);
         if(document.getElementById('sub_perm_imp')) document.getElementById('sub_perm_imp').checked = (u.perm_import == 1);
         if(document.getElementById('sub_perm_add')) document.getElementById('sub_perm_add').checked = (u.perm_add == 1);
         if(document.getElementById('sub_perm_exp')) document.getElementById('sub_perm_exp').checked = (u.perm_export == 1);
-        document.getElementById('sub_perm_us').checked = (u.perm_tab_us == 1); 
-        document.getElementById('sub_perm_transit').checked = (u.perm_tab_transit == 1); 
-        document.getElementById('sub_perm_cn').checked = (u.perm_tab_cn == 1); 
-        document.getElementById('sub_perm_sold').checked = (u.perm_tab_sold == 1); 
-        
+        document.getElementById('sub_perm_us').checked = (u.perm_tab_us == 1);
+        document.getElementById('sub_perm_transit').checked = (u.perm_tab_transit == 1);
+        document.getElementById('sub_perm_cn').checked = (u.perm_tab_cn == 1);
+        document.getElementById('sub_perm_sold').checked = (u.perm_tab_sold == 1);
+
         if(document.getElementById('sub_perm_parts')) document.getElementById('sub_perm_parts').checked = (u.perm_tab_parts == 1);
         if(document.getElementById('sub_perm_parts_sold')) document.getElementById('sub_perm_parts_sold').checked = (u.perm_tab_parts_sold == 1);
         if(document.getElementById('sub_perm_repair')) document.getElementById('sub_perm_repair').checked = (u.perm_tab_repair == 1);
         if(document.getElementById('sub_perm_repair_done')) document.getElementById('sub_perm_repair_done').checked = (u.perm_tab_repair_done == 1);
-        
-        document.getElementById('sub_perm_hist').value = u.perm_history_view || "999"; 
-        document.getElementById('subModalTitle').innerText = '编辑员工配置'; 
-        document.getElementById('subModal').classList.remove('hidden'); 
-        setTimeout(() => document.getElementById('subContent').classList.add('modal-enter-active'), 10); 
+
+        document.getElementById('sub_perm_hist').value = u.perm_history_view || "999";
+        document.getElementById('subModalTitle').innerText = '编辑员工配置';
+        document.getElementById('subModal').classList.remove('hidden');
+        setTimeout(() => document.getElementById('subContent').classList.add('modal-enter-active'), 10);
     }
-    
-    async function saveSubAcc(e) { 
-        e.preventDefault(); 
-        
+
+    async function saveSubAcc(e) {
+        e.preventDefault();
+
         // 将实际的保存动作封装起来
         const doSave = async (lockPwd = '') => {
-            const fd = new FormData(); 
-            fd.append('action', 'save_sub_account'); 
-            fd.append('sub_id', document.getElementById('sub_id').value); 
-            fd.append('sub_user', document.getElementById('sub_user').value); 
-            fd.append('sub_pass', document.getElementById('sub_pass').value); 
-            fd.append('p_hist', document.getElementById('sub_perm_hist').value); 
+            const fd = new FormData();
+            fd.append('action', 'save_sub_account');
+            fd.append('sub_id', document.getElementById('sub_id').value);
+            fd.append('sub_user', document.getElementById('sub_user').value);
+            fd.append('sub_pass', document.getElementById('sub_pass').value);
+            fd.append('p_hist', document.getElementById('sub_perm_hist').value);
             fd.append('lock_pwd', lockPwd); // 将输入的保险箱密码传给后端
-            
-            ['fin', 'edt', 'del', 'dl', 'imp', 'add', 'exp', 'us', 'transit', 'cn', 'sold', 'parts', 'parts_sold', 'repair', 'repair_done'].forEach(x => { 
+
+            ['fin', 'edt', 'del', 'dl', 'imp', 'add', 'exp', 'us', 'transit', 'cn', 'sold', 'parts', 'parts_sold', 'repair', 'repair_done'].forEach(x => {
                 const el = document.getElementById('sub_perm_' + x);
-                if (el && el.checked) fd.append('p_' + x, '1'); 
-            }); 
-            try { 
-                const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-                const j = await r.json(); 
-                if (j.status === 'success') { 
-                    closeSubModal(); 
-                    loadSubAccounts(); 
-                } else { 
-                    alert(j.message); 
-                } 
-            } catch (er) { 
-                alert("保存失败"); 
+                if (el && el.checked) fd.append('p_' + x, '1');
+            });
+            try {
+                const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+                const j = await r.json();
+                if (j.status === 'success') {
+                    closeSubModal();
+                    loadSubAccounts();
+                } else {
+                    alert(j.message);
+                }
+            } catch (er) {
+                alert("保存失败");
             }
         };
 
@@ -2357,173 +2357,173 @@ if ($is_initial_admin) {
             doSave();
         }
     }
-    
-    async function delSubAcc(id) { 
-        if (!confirm("确定要删除该员工吗？")) return; 
-        const fd = new FormData(); 
-        fd.append('action', 'delete_sub_account'); 
-        fd.append('sub_id', id); 
-        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd}); 
-        loadSubAccounts(); 
+
+    async function delSubAcc(id) {
+        if (!confirm("确定要删除该员工吗？")) return;
+        const fd = new FormData();
+        fd.append('action', 'delete_sub_account');
+        fd.append('sub_id', id);
+        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        loadSubAccounts();
     }
-    
-    function downloadTemplate() { 
+
+    function downloadTemplate() {
         if (PERM_DOWNLOAD_TPL === 0) return alert('安全拦截：您没有下载模板的权限！');
-        const hd = ["入库日期", "批次", "服务编号", "配置", "数量", "状态", "单件成本", "单件运费", "收货人", "备注", "单件收款金额"]; 
-        const r = ["2026-04-23", "第一批", "SV2026-001", "配置信息", "1", "美国仓", "20000", "500", "张三", "顺丰包邮", "0"]; 
-        const ws = XLSX.utils.aoa_to_sheet([hd, r]); 
-        const wb = XLSX.utils.book_new(); 
-        XLSX.utils.book_append_sheet(wb, ws, "模板"); 
-        XLSX.writeFile(wb, "进销存批量导入模板.xlsx"); 
+        const hd = ["入库日期", "批次", "服务编号", "配置", "数量", "状态", "单件成本", "单件运费", "收货人", "备注", "单件收款金额"];
+        const r = ["2026-04-23", "第一批", "SV2026-001", "配置信息", "1", "美国仓", "20000", "500", "张三", "顺丰包邮", "0"];
+        const ws = XLSX.utils.aoa_to_sheet([hd, r]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "模板");
+        XLSX.writeFile(wb, "进销存批量导入模板.xlsx");
     }
-    
-    function handleExcelUpload(e) { 
-        const f = e.target.files[0]; 
-        if (!f) return; 
-        const rd = new FileReader(); 
-        rd.onload = async function(ev) { 
-            try { 
-                const dt = new Uint8Array(ev.target.result); 
-                const wb = XLSX.read(dt, {type: 'array'}); 
-                const ws = wb.Sheets[wb.SheetNames[0]]; 
-                const j = XLSX.utils.sheet_to_json(ws, {defval: ""}); 
-                if (j.length === 0) return; 
+
+    function handleExcelUpload(e) {
+        const f = e.target.files[0];
+        if (!f) return;
+        const rd = new FileReader();
+        rd.onload = async function(ev) {
+            try {
+                const dt = new Uint8Array(ev.target.result);
+                const wb = XLSX.read(dt, {type: 'array'});
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const j = XLSX.utils.sheet_to_json(ws, {defval: ""});
+                if (j.length === 0) return;
                 const url = `${INVENTORY_API_URL}?action=import&unlocked=${isFinanceUnlocked ? '1' : '0'}`;
                 const r = await apiFetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(j)
         });
-        const res = await r.json(); 
-                alert(res.message); 
-                loadData(); 
-            } catch (er) { 
-                alert("文件解析失败！"); 
-            } 
-            e.target.value = ''; 
-        }; 
-        rd.readAsArrayBuffer(f); 
+        const res = await r.json();
+                alert(res.message);
+                loadData();
+            } catch (er) {
+                alert("文件解析失败！");
+            }
+            e.target.value = '';
+        };
+        rd.readAsArrayBuffer(f);
     }
-    
-    function exportToExcel() { 
+
+    function exportToExcel() {
         if (PERM_EXPORT === 0) return alert('安全拦截：您没有导出数据的权限！');
-        if (currentData.length === 0) return; 
-        const sm = {'US': '美国仓', 'TRANSIT': '国外途中', 'CN_WH': '国内仓', 'SOLD': '已售', 'PARTS': '零配件仓', 'PARTS_SOLD': '已售配件', 'REPAIR': '售后维修', 'REPAIR_DONE': '维修完毕'}; 
-        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked); 
-        let sF = (PERM_FINANCE === 1) && !isTabLocked; 
+        if (currentData.length === 0) return;
+        const sm = {'US': '美国仓', 'TRANSIT': '国外途中', 'CN_WH': '国内仓', 'SOLD': '已售', 'PARTS': '零配件仓', 'PARTS_SOLD': '已售配件', 'REPAIR': '售后维修', 'REPAIR_DONE': '维修完毕'};
+        let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked);
+        let sF = (PERM_FINANCE === 1) && !isTabLocked;
         let isPartsView = ['PARTS', 'PARTS_SOLD'].includes(currentTab);
-        
-        const ed = currentData.map(r => { 
-            let qty = parseInt(r.quantity) || 1; 
-            let o = { 
-                "入库日期": r.status_date || '', 
-                "批次": r.batch_no || '', 
-                "编号": r.service_no, 
+
+        const ed = currentData.map(r => {
+            let qty = parseInt(r.quantity) || 1;
+            let o = {
+                "入库日期": r.status_date || '',
+                "批次": r.batch_no || '',
+                "编号": r.service_no,
                 "配置": r.config_desc
-            }; 
-            
+            };
+
             if (isPartsView) {
-                o["数量"] = qty; 
+                o["数量"] = qty;
             }
             o["状态"] = sm[r.status] || r.status;
-            
-            if (sF) { 
-                o[isPartsView ? "单件成本" : "成本"] = isPartsView ? (parseFloat(r.cost_rmb) / qty).toFixed(2) : parseFloat(r.cost_rmb); 
-                o[isPartsView ? "单件运费" : "运费"] = isPartsView ? (parseFloat(r.freight) / qty).toFixed(2) : parseFloat(r.freight); 
-            } 
-            o["收货人"] = r.receiver; 
-            o["备注"] = r.remarks; 
-            o[isPartsView ? "单件收款金额" : "收款金额"] = isPartsView ? (parseFloat(r.collected_amount) / qty).toFixed(2) : parseFloat(r.collected_amount); 
-            
-            if (sF) { 
+
+            if (sF) {
+                o[isPartsView ? "单件成本" : "成本"] = isPartsView ? (parseFloat(r.cost_rmb) / qty).toFixed(2) : parseFloat(r.cost_rmb);
+                o[isPartsView ? "单件运费" : "运费"] = isPartsView ? (parseFloat(r.freight) / qty).toFixed(2) : parseFloat(r.freight);
+            }
+            o["收货人"] = r.receiver;
+            o["备注"] = r.remarks;
+            o[isPartsView ? "单件收款金额" : "收款金额"] = isPartsView ? (parseFloat(r.collected_amount) / qty).toFixed(2) : parseFloat(r.collected_amount);
+
+            if (sF) {
                 let isSoldView = ['SOLD', 'PARTS_SOLD', 'REPAIR_DONE'].includes(currentTab);
-                o[isSoldView ? "总利润" : "沉没总成本"] = isSoldView ? parseFloat(r.profit) || 0 : parseFloat(r.cost_rmb) + parseFloat(r.freight); 
-            } 
-            return o; 
-        }); 
-        
-        const ws = XLSX.utils.json_to_sheet(ed); 
-        const wb = XLSX.utils.book_new(); 
-        XLSX.utils.book_append_sheet(wb, ws, "数据"); 
-        XLSX.writeFile(wb, `数据导出_${new Date().getTime()}.xlsx`); 
+                o[isSoldView ? "总利润" : "沉没总成本"] = isSoldView ? parseFloat(r.profit) || 0 : parseFloat(r.cost_rmb) + parseFloat(r.freight);
+            }
+            return o;
+        });
+
+        const ws = XLSX.utils.json_to_sheet(ed);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "数据");
+        XLSX.writeFile(wb, `数据导出_${new Date().getTime()}.xlsx`);
     }
-    
-    function updateDateTime() { 
-        const now = new Date(); 
-        const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']; 
-        const month = now.getMonth() + 1; 
-        const date = String(now.getDate()).padStart(2, '0'); 
-        const day = days[now.getDay()]; 
-        const hours = String(now.getHours()).padStart(2, '0'); 
-        const minutes = String(now.getMinutes()).padStart(2, '0'); 
-        const elTime = document.getElementById('widget_datetime'); 
-        if(elTime) { 
-            elTime.innerText = `${month}月${date}日 ${day} ${hours}:${minutes}`; 
-        } 
+
+    function updateDateTime() {
+        const now = new Date();
+        const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+        const month = now.getMonth() + 1;
+        const date = String(now.getDate()).padStart(2, '0');
+        const day = days[now.getDay()];
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const elTime = document.getElementById('widget_datetime');
+        if(elTime) {
+            elTime.innerText = `${month}月${date}日 ${day} ${hours}:${minutes}`;
+        }
     }
-    
-    setInterval(updateDateTime, 1000); 
-    if(document.readyState === 'complete') { 
-        updateDateTime(); 
-    } else { 
-        window.addEventListener('DOMContentLoaded', updateDateTime); 
+
+    setInterval(updateDateTime, 1000);
+    if(document.readyState === 'complete') {
+        updateDateTime();
+    } else {
+        window.addEventListener('DOMContentLoaded', updateDateTime);
     }
-    
+
     // === ⚡ 性能版静默刷新 (极低服务器开销) ===
-    async function silentRefresh() { 
-        if(currentTab === 'NONE') return; 
-        
+    async function silentRefresh() {
+        if(currentTab === 'NONE') return;
+
         // 🛡️ 核心防御：离开座位超过 60 秒，或屏幕已锁定，立刻停止偷偷刷新
         let isLocked = sessionStorage.getItem('sys_tab_locked') === '1' || localStorage.getItem('sys_global_locked') === '1';
         if (isLocked || (Date.now() - tabLastActive > 60000)) return;
-        
+
         const itemModal = document.getElementById('itemModal');
         if (!itemModal) return;
 
-        const checkedCount = document.querySelectorAll('.row-checkbox:checked').length; 
-        const isItemModalOpen = !itemModal.classList.contains('hidden'); 
-        const isBatchModalOpen = !document.getElementById('batchEditModal').classList.contains('hidden'); 
-        const isSetModalOpen = !document.getElementById('settingsModal').classList.contains('hidden'); 
+        const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+        const isItemModalOpen = !itemModal.classList.contains('hidden');
+        const isBatchModalOpen = !document.getElementById('batchEditModal').classList.contains('hidden');
+        const isSetModalOpen = !document.getElementById('settingsModal').classList.contains('hidden');
         const dispatchModal = document.getElementById('dispatchModal');
         const isDispatchModalOpen = dispatchModal && !dispatchModal.classList.contains('hidden');
-        
-        if (checkedCount > 0 || isItemModalOpen || isBatchModalOpen || isSetModalOpen || isDispatchModalOpen) return; 
-        
-        try { 
+
+        if (checkedCount > 0 || isItemModalOpen || isBatchModalOpen || isSetModalOpen || isDispatchModalOpen) return;
+
+        try {
             // ⚡ 性能核心：先用轻量级探针查询数据库有没有发生变动
             const checkRes = await apiFetch(`${INVENTORY_API_URL}?action=check_update`);
             const checkJson = await checkRes.json();
-            
+
             if (checkJson.status === 'success') {
                 // 如果是第一次运行，或者别人操作导致时间戳变了，才去拉取全量数据
                 if (lastKnownUpdate === null || checkJson.last_update !== lastKnownUpdate) {
                     lastKnownUpdate = checkJson.last_update;
-                    
-                    const params = new URLSearchParams({ 
-                        action: 'list', 
-                        status: currentTab, 
-                        keyword: currentSearchTerm, 
-                        dateFilter: currentDateFilter || '', 
-                        page: currentPage, 
-                        limit: ITEMS_PER_PAGE, 
-                        unlocked: isFinanceUnlocked ? '1' : '0' 
-                    }); 
-                    
-                    const r = await apiFetch(`${INVENTORY_API_URL}?${params.toString()}`); 
-                    const j = await r.json(); 
-                    
-                    if (j.status === 'success') { 
-                        currentData = j.data; 
-                        totalFilteredItems = parseInt(j.total); 
-                        summaryData = j.summary; 
-                        renderSummaryPanels(); 
-                        renderTable(); 
-                    } 
+
+                    const params = new URLSearchParams({
+                        action: 'list',
+                        status: currentTab,
+                        keyword: currentSearchTerm,
+                        dateFilter: currentDateFilter || '',
+                        page: currentPage,
+                        limit: ITEMS_PER_PAGE,
+                        unlocked: isFinanceUnlocked ? '1' : '0'
+                    });
+
+                    const r = await apiFetch(`${INVENTORY_API_URL}?${params.toString()}`);
+                    const j = await r.json();
+
+                    if (j.status === 'success') {
+                        currentData = j.data;
+                        totalFilteredItems = parseInt(j.total);
+                        summaryData = j.summary;
+                        renderSummaryPanels();
+                        renderTable();
+                    }
                 }
             }
-        } catch (e) {} 
+        } catch (e) {}
     }
-    
+
     // 配合探针机制，在手动加载数据后同步更新一下时间戳
     const originalLoadData = loadData;
     loadData = async function() {

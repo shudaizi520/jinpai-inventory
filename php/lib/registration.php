@@ -36,7 +36,7 @@ function require_system_admin(PDO $pdo, int $actorId): void
     $statement = $pdo->prepare("SELECT COUNT(*) FROM users WHERE id = ? AND role = 'admin' AND parent_id = 0");
     $statement->execute([$actorId]);
     if ((int) $statement->fetchColumn() !== 1) {
-        throw new RuntimeException('只有系统管理员可以执行此操作。');
+        throw new HttpException('只有系统管理员可以执行此操作。', 403);
     }
 }
 
@@ -44,7 +44,7 @@ function set_registration_mode(PDO $pdo, int $actorId, string $mode): void
 {
     $mode = strtolower(trim($mode));
     if (!registration_mode_is_valid($mode)) {
-        throw new RuntimeException('不支持的注册模式。');
+        throw new HttpException('不支持的注册模式。', 400);
     }
     require_system_admin($pdo, $actorId);
 
@@ -58,7 +58,7 @@ function create_invitation(PDO $pdo, int $actorId, ?DateTimeImmutable $expiresAt
 {
     require_system_admin($pdo, $actorId);
     if ($expiresAt !== null && $expiresAt <= new DateTimeImmutable('now')) {
-        throw new RuntimeException('邀请码有效期必须晚于当前时间。');
+        throw new HttpException('邀请码有效期必须晚于当前时间。', 400);
     }
 
     for ($attempt = 0; $attempt < 3; $attempt++) {
@@ -96,10 +96,10 @@ function consume_invitation(PDO $pdo, string $plainCode, callable $createAccount
         $invite = $statement->fetch();
 
         if (!$invite || $invite['used_at'] !== null || $invite['revoked_at'] !== null) {
-            throw new RuntimeException('邀请码无效或已使用。');
+            throw new HttpException('邀请码无效或已使用。', 400);
         }
         if ($invite['expires_at'] !== null && new DateTimeImmutable($invite['expires_at']) <= new DateTimeImmutable('now')) {
-            throw new RuntimeException('邀请码已过期。');
+            throw new HttpException('邀请码已过期。', 400);
         }
 
         $userId = (int) $createAccount($pdo);
@@ -110,7 +110,7 @@ function consume_invitation(PDO $pdo, string $plainCode, callable $createAccount
         $markUsed = $pdo->prepare('UPDATE registration_invites SET used_at = NOW(), used_by = ? WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL');
         $markUsed->execute([$userId, $invite['id']]);
         if ($markUsed->rowCount() !== 1) {
-            throw new RuntimeException('邀请码已被使用。');
+            throw new HttpException('邀请码已被使用。', 409);
         }
 
         $pdo->commit();
@@ -156,12 +156,12 @@ function admin_registration_snapshot(PDO $pdo, int $actorId): array
 function revoke_invitation(PDO $pdo, int $inviteId): void
 {
     if ($inviteId < 1) {
-        throw new RuntimeException('邀请码编号无效。');
+        throw new HttpException('邀请码编号无效。', 400);
     }
     $statement = $pdo->prepare('UPDATE registration_invites SET revoked_at = NOW() WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL');
     $statement->execute([$inviteId]);
     if ($statement->rowCount() !== 1) {
-        throw new RuntimeException('邀请码不存在、已使用或已撤销。');
+        throw new HttpException('邀请码不存在、已使用或已撤销。', 400);
     }
 }
 
@@ -175,7 +175,7 @@ function register_primary_account(PDO $pdo, array $input, string $ip): int
 {
     $mode = registration_mode($pdo);
     if ($mode === 'closed') {
-        throw new RuntimeException('系统当前已关闭新账号注册。');
+        throw new HttpException('系统当前已关闭新账号注册。', 403);
     }
 
     $data = validate_primary_registration($input);
@@ -187,7 +187,7 @@ function register_primary_account(PDO $pdo, array $input, string $ip): int
     if ($mode === 'invite') {
         $code = trim((string) ($input['invite_code'] ?? ''));
         if ($code === '') {
-            throw new RuntimeException('请输入有效的邀请码。');
+            throw new HttpException('请输入有效的邀请码。', 400);
         }
         return consume_invitation($pdo, $code, $createAccount);
     }
@@ -214,17 +214,17 @@ function validate_primary_registration(array $input): array
     $confirmation = (string) ($input['password_confirm'] ?? '');
 
     if (strlen($username) < 3 || strlen($username) > 50) {
-        throw new RuntimeException('用户名长度必须为 3 至 50 个字符。');
+        throw new HttpException('用户名长度必须为 3 至 50 个字符。', 400);
     }
     if (preg_match('/[\x00-\x1F\x7F]/', $username) === 1) {
-        throw new RuntimeException('用户名包含不允许的字符。');
+        throw new HttpException('用户名包含不允许的字符。', 400);
     }
     if (!hash_equals($password, $confirmation)) {
-        throw new RuntimeException('两次输入的密码不一致。');
+        throw new HttpException('两次输入的密码不一致。', 400);
     }
     $passwordResult = validate_password($password);
     if (!$passwordResult['valid']) {
-        throw new RuntimeException(implode(' ', $passwordResult['errors']));
+        throw new HttpException(implode(' ', $passwordResult['errors']), 400);
     }
 
     $questions = [];
@@ -233,13 +233,13 @@ function validate_primary_registration(array $input): array
         $question = trim((string) ($input['q' . $index] ?? ''));
         $answer = trim((string) ($input['a' . $index] ?? ''));
         if ($question === '' || strlen($question) > 255 || $answer === '' || strlen($answer) > 255) {
-            throw new RuntimeException('请完整填写三个密保问题和答案。');
+            throw new HttpException('请完整填写三个密保问题和答案。', 400);
         }
         $questions[] = $question;
         $answers[] = $answer;
     }
     if (count(array_unique($questions)) !== 3) {
-        throw new RuntimeException('三个密保问题不能重复。');
+        throw new HttpException('三个密保问题不能重复。', 400);
     }
 
     return [
@@ -252,10 +252,18 @@ function validate_primary_registration(array $input): array
 
 function enforce_primary_account_limit(PDO $pdo): void
 {
+    if (!$pdo->inTransaction()) {
+        throw new LogicException('账号数量限制必须在事务中检查。');
+    }
+    $lock = $pdo->prepare("SELECT setting_value FROM app_settings WHERE setting_key = 'registration_mode' FOR UPDATE");
+    $lock->execute();
+    if ($lock->fetchColumn() === false) {
+        throw new RuntimeException('注册配置不存在，请先运行数据库迁移。');
+    }
     $maximum = max(1, min(10000, (int) app_config('MAX_PRIMARY_ACCOUNTS', 50)));
     $count = (int) $pdo->query('SELECT COUNT(*) FROM users WHERE parent_id = 0')->fetchColumn();
     if ($count >= $maximum) {
-        throw new RuntimeException('独立主账号数量已达到服务器设置的上限。');
+        throw new HttpException('独立主账号数量已达到服务器设置的上限。', 403);
     }
 }
 
@@ -278,7 +286,7 @@ function insert_primary_account(PDO $pdo, array $data): int
         ]);
     } catch (PDOException $error) {
         if ((string) $error->getCode() === '23000') {
-            throw new RuntimeException('该用户名已被使用。');
+            throw new HttpException('该用户名已被使用。', 409);
         }
         throw $error;
     }
@@ -299,7 +307,7 @@ function enforce_open_registration_rate_limit(PDO $pdo, string $ip): void
     $statement->execute([$identifier]);
     $row = $statement->fetch();
     if ($row && $row['lock_until'] !== null && new DateTimeImmutable($row['lock_until']) > new DateTimeImmutable('now')) {
-        throw new RuntimeException('当前网络注册次数过多，请稍后再试。');
+        throw new HttpException('当前网络注册次数过多，请稍后再试。', 429);
     }
 }
 

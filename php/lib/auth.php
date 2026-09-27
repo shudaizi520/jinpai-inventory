@@ -206,6 +206,40 @@ function clear_auth_failures(PDO $pdo, string $type, string $identifier): void
     $statement->execute([$type, $identifier]);
 }
 
+/** @return array{ip:string,username:string} */
+function recovery_rate_keys(string $ip, string $username): array
+{
+    $validatedIp = filter_var($ip, FILTER_VALIDATE_IP);
+    return [
+        'ip' => 'recovery-ip:' . (is_string($validatedIp) ? $validatedIp : '0.0.0.0'),
+        'username' => 'recovery-account:' . strtolower(trim($username)),
+    ];
+}
+
+function recovery_lock_until(PDO $pdo, array $keys): ?DateTimeImmutable
+{
+    $ipLock = auth_lock_until($pdo, 'ip', (string) ($keys['ip'] ?? ''));
+    $accountLock = auth_lock_until($pdo, 'username', (string) ($keys['username'] ?? ''));
+    if ($ipLock === null) {
+        return $accountLock;
+    }
+    if ($accountLock === null) {
+        return $ipLock;
+    }
+    return $ipLock > $accountLock ? $ipLock : $accountLock;
+}
+
+function record_recovery_failure(PDO $pdo, array $keys): void
+{
+    record_auth_failure($pdo, 'ip', (string) ($keys['ip'] ?? ''), 20, 30);
+    record_auth_failure($pdo, 'username', (string) ($keys['username'] ?? ''), 5, 30);
+}
+
+function clear_recovery_account_failures(PDO $pdo, array $keys): void
+{
+    clear_auth_failures($pdo, 'username', (string) ($keys['username'] ?? ''));
+}
+
 function assert_auth_rate_key(string $type, string $identifier): void
 {
     if (!in_array($type, ['ip', 'username'], true)) {

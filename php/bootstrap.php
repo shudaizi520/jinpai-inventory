@@ -10,7 +10,8 @@ send_security_headers();
 
 try {
     $pdo = app_pdo();
-    $pdo->exec("SET time_zone = '+08:00'");
+    $databaseOffset = (new DateTimeImmutable('now'))->format('P');
+    $pdo->exec('SET time_zone = ' . $pdo->quote($databaseOffset));
 } catch (Throwable $error) {
     $requestId = safe_log($error);
     if (PHP_SAPI === 'cli') {

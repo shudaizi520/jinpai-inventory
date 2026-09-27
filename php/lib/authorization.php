@@ -14,6 +14,17 @@ const INVENTORY_STATUS_PERMISSIONS = [
     'REPAIR_DONE' => 'perm_tab_repair_done',
 ];
 
+const INVENTORY_STATUS_LOCKS = [
+    'US' => 'lock_tab_us',
+    'TRANSIT' => 'lock_tab_transit',
+    'CN_WH' => 'lock_tab_cn',
+    'SOLD' => 'lock_tab_sold',
+    'PARTS' => 'lock_tab_parts',
+    'PARTS_SOLD' => 'lock_tab_parts_sold',
+    'REPAIR' => 'lock_tab_repair',
+    'REPAIR_DONE' => 'lock_tab_repair_done',
+];
+
 function tenant_id(array $user): int
 {
     $id = (int) ($user['id'] ?? 0);
@@ -79,6 +90,19 @@ function parse_ids(string $value, int $maximum = 200): array
     return array_values($ids);
 }
 
+function positive_int_input(mixed $value, string $label, int $maximum = PHP_INT_MAX): int
+{
+    $stringValue = is_int($value) ? (string) $value : trim((string) $value);
+    if (preg_match('/^[1-9][0-9]*$/', $stringValue) !== 1) {
+        throw new HttpException("{$label}格式无效。", 400);
+    }
+    $integer = filter_var($stringValue, FILTER_VALIDATE_INT);
+    if ($integer === false || $integer < 1 || $integer > $maximum) {
+        throw new HttpException("{$label}超出允许范围。", 400);
+    }
+    return (int) $integer;
+}
+
 /**
  * @return array{service_no:string,batch_no:string,quantity:int,status:string,config_desc:string,cost_rmb:float,freight:float,receiver:string,remarks:string,collected_amount:float}
  */
@@ -111,11 +135,6 @@ function validate_inventory_input(array $input): array
         'remarks' => bounded_text($input['remarks'] ?? '', '备注', 255),
         'collected_amount' => bounded_money($input['collected_amount'] ?? 0, '收款金额'),
     ];
-
-    if (in_array($status, ['SOLD', 'PARTS_SOLD'], true)
-        && ($validated['receiver'] === '' || $validated['collected_amount'] <= 0)) {
-        throw new HttpException('已售记录必须填写收货人和有效收款金额。', 400);
-    }
 
     return $validated;
 }
@@ -155,6 +174,64 @@ function mask_financial_fields(array $row): array
         }
     }
     return $row;
+}
+
+/** @return array{cost_rmb:float,freight:float,collected_amount:float} */
+function financial_values_for_write(array $input, ?array $existing, bool $canEdit): array
+{
+    if ($canEdit) {
+        return [
+            'cost_rmb' => bounded_money($input['cost_rmb'] ?? 0, '成本'),
+            'freight' => bounded_money($input['freight'] ?? 0, '运费'),
+            'collected_amount' => bounded_money($input['collected_amount'] ?? 0, '收款金额'),
+        ];
+    }
+    if ($existing === null) {
+        return ['cost_rmb' => 0.0, 'freight' => 0.0, 'collected_amount' => 0.0];
+    }
+
+    $oldQuantity = max(1, (int) ($existing['quantity'] ?? 1));
+    $newQuantity = positive_int_input($input['quantity'] ?? 1, '数量', 100000);
+    return [
+        'cost_rmb' => bounded_money(((float) ($existing['cost_rmb'] ?? 0) / $oldQuantity) * $newQuantity, '成本'),
+        'freight' => bounded_money(((float) ($existing['freight'] ?? 0) / $oldQuantity) * $newQuantity, '运费'),
+        'collected_amount' => bounded_money(((float) ($existing['collected_amount'] ?? 0) / $oldQuantity) * $newQuantity, '收款金额'),
+    ];
+}
+
+function can_manage_financial_values(int $permission, array $owner, array $statuses, bool $unlocked): bool
+{
+    if ($permission !== 1) {
+        return false;
+    }
+    foreach (array_unique($statuses) as $status) {
+        $lockColumn = INVENTORY_STATUS_LOCKS[$status] ?? null;
+        if ($lockColumn === null) {
+            throw new HttpException('仓库状态无效。', 400);
+        }
+        if ((int) ($owner[$lockColumn] ?? 0) === 1 && !$unlocked) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function require_sold_record_details(string $status, string $receiver, float $collectedAmount): void
+{
+    if (in_array($status, ['SOLD', 'PARTS_SOLD'], true)
+        && ($receiver === '' || $collectedAmount <= 0)) {
+        throw new HttpException('已售记录必须填写收货人和有效收款金额。', 400);
+    }
+}
+
+function require_self_delete_allowed(array $user): void
+{
+    if ((int) ($user['parent_id'] ?? 0) > 0) {
+        throw new HttpException('员工账号不能执行主账号注销。', 403);
+    }
+    if (($user['role'] ?? '') === 'admin') {
+        throw new HttpException('系统管理员不能在应用内注销，以免系统失去管理账号。', 403);
+    }
 }
 
 /** @return list<array<string, mixed>> */

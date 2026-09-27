@@ -49,7 +49,7 @@ test('fresh database migration is complete and idempotent', function (): void {
             assert_true(in_array($table, $tables, true), "Missing table {$table}");
         }
         assert_same('invite', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='registration_mode'")->fetchColumn());
-        assert_same(1, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
+        assert_same(2, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
     });
 });
 
@@ -86,10 +86,11 @@ test('legacy migration preserves users inventory values and orphan ownership', f
 
         assert_same(1, (int) $pdo->query("SELECT COUNT(*) FROM users WHERE id=7 AND username='legacy-owner'")->fetchColumn());
         assert_same(2, (int) $pdo->query('SELECT COUNT(*) FROM inventory_items')->fetchColumn());
-        $kept = $pdo->query("SELECT user_id, service_no, config_desc, cost_us, freight, receiver, collected_amount FROM inventory_items WHERE service_no='SN-KEEP'")->fetch();
+        $kept = $pdo->query("SELECT user_id, service_no, config_desc, cost_us, cost_rmb, freight, receiver, collected_amount FROM inventory_items WHERE service_no='SN-KEEP'")->fetch();
         assert_same(7, (int) $kept['user_id']);
         assert_same('original', $kept['config_desc']);
         assert_same('123.45', $kept['cost_us']);
+        assert_same('123.45', $kept['cost_rmb']);
         assert_same('6.78', $kept['freight']);
         assert_same('customer', $kept['receiver']);
         assert_same('200.00', $kept['collected_amount']);
@@ -97,6 +98,9 @@ test('legacy migration preserves users inventory values and orphan ownership', f
 
         $uniqueServiceIndexes = $pdo->query("SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='inventory_items' AND column_name='service_no' AND non_unique=0")->fetchColumn();
         assert_same(0, (int) $uniqueServiceIndexes);
+        $lengths = $pdo->query("SELECT COLUMN_NAME, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='inventory_items' AND COLUMN_NAME IN ('service_no', 'batch_no')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        assert_same(100, (int) $lengths['service_no']);
+        assert_same(100, (int) $lengths['batch_no']);
     });
 });
 

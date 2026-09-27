@@ -85,9 +85,13 @@ function client_ip(array $server, array $trustedProxies): string
     }
 
     $forwarded = explode(',', (string) ($server['HTTP_X_FORWARDED_FOR'] ?? ''));
-    foreach ($forwarded as $candidate) {
-        $candidate = trim($candidate);
-        if (filter_var($candidate, FILTER_VALIDATE_IP) !== false) {
+    $forwarded[] = $remote;
+    for ($index = count($forwarded) - 1; $index >= 0; $index--) {
+        $candidate = trim($forwarded[$index]);
+        if (filter_var($candidate, FILTER_VALIDATE_IP) === false) {
+            continue;
+        }
+        if (!in_array($candidate, $trustedProxies, true)) {
             return $candidate;
         }
     }

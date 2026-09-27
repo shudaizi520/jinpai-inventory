@@ -63,7 +63,16 @@ test('configured reverse proxies may supply the original client IP', function ()
         'REMOTE_ADDR' => '10.0.0.2',
         'HTTP_X_FORWARDED_FOR' => '198.51.100.25, 10.0.0.1',
     ];
-    assert_same('198.51.100.25', client_ip($server, ['10.0.0.2']));
+    assert_same('198.51.100.25', client_ip($server, ['10.0.0.1', '10.0.0.2']));
+});
+
+test('trusted proxy chains discard attacker supplied leftmost hops', function (): void {
+    assert_true(function_exists('client_ip'), 'client_ip() is missing');
+    $server = [
+        'REMOTE_ADDR' => '10.0.0.2',
+        'HTTP_X_FORWARDED_FOR' => '192.0.2.66, 198.51.100.25, 10.0.0.1',
+    ];
+    assert_same('198.51.100.25', client_ip($server, ['10.0.0.1', '10.0.0.2']));
 });
 
 test('safe logging returns an opaque request identifier', function (): void {

@@ -49,8 +49,8 @@ if (!$ownerData) { json_response(['status' => 'error', 'message' => '登录状�
 
 // 修复：全局定义状态锁映射，供所有 API (特别是 import) 共享，防止变量未定义被绕过
 $statusLockMap = [
-    'US' => 'lock_tab_us', 'TRANSIT' => 'lock_tab_transit', 'CN_WH' => 'lock_tab_cn', 
-    'SOLD' => 'lock_tab_sold', 'PARTS' => 'lock_tab_parts', 'PARTS_SOLD' => 'lock_tab_parts_sold', 
+    'US' => 'lock_tab_us', 'TRANSIT' => 'lock_tab_transit', 'CN_WH' => 'lock_tab_cn',
+    'SOLD' => 'lock_tab_sold', 'PARTS' => 'lock_tab_parts', 'PARTS_SOLD' => 'lock_tab_parts_sold',
     'REPAIR' => 'lock_tab_repair', 'REPAIR_DONE' => 'lock_tab_repair_done'
 ];
 
@@ -124,10 +124,10 @@ try {
 
         $keyword = bounded_text($_GET['keyword'] ?? '', '搜索词', 100);
         $dateFilter = bounded_text($_GET['dateFilter'] ?? '', '日期筛选', 20);
-        $page = max(1, intval($_GET['page'] ?? 1));
-        $limit = min(200, max(1, intval($_GET['limit'] ?? 50)));
+        $page = positive_int_input($_GET['page'] ?? 1, '页码', 100000);
+        $limit = positive_int_input($_GET['limit'] ?? 50, '每页数量', 200);
         $offset = ($page - 1) * $limit;
-        
+
         $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
         $date_condition = "";
 
@@ -138,7 +138,7 @@ try {
         if ($status === 'SOLD' || $status === 'PARTS_SOLD') {
             // 【安全修复8】：精准匹配对应的锁，防止看配件仓的时候读错锁导致历史销量完全泄露
             $current_lock = ($status === 'SOLD') ? $lock_tab_sold : $lock_tab_parts_sold;
-            
+
             if ($current_lock == 1 && !$unlocked) {
                 $date_condition = " AND status_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)";
             } else {
@@ -149,8 +149,8 @@ try {
         }
 
         $summary = ['tc' => 0, 'tf' => 0, 'total_count' => 0, 'tp' => 0, 'years' => [], 'months' => []];
-        $baseWhere = "WHERE status = ? AND user_id = ?" . $date_condition; 
-        
+        $baseWhere = "WHERE status = ? AND user_id = ?" . $date_condition;
+
         $stmtTotalStats = $pdo->prepare("SELECT SUM(quantity) as total_count, SUM(cost_rmb) as tc, SUM(freight) as tf, SUM(collected_amount - cost_rmb - freight) as tp FROM inventory_items $baseWhere");
         $stmtTotalStats->execute([$status, $owner_id]);
         $totalStats = $stmtTotalStats->fetch(PDO::FETCH_ASSOC);
@@ -164,14 +164,14 @@ try {
             // ⚡ 性能提升：改用原生截取，避开日期格式化函数导致的全表扫索引失效
             $stmtGroup = $pdo->prepare("SELECT LEFT(status_date, 4) as y, LEFT(status_date, 7) as m, SUM(quantity) as c, SUM(collected_amount - cost_rmb - freight) as p FROM inventory_items $baseWhere GROUP BY m, y ORDER BY m DESC");
             $stmtGroup->execute([$status, $owner_id]);
-            
+
             while ($row = $stmtGroup->fetch(PDO::FETCH_ASSOC)) {
                 $yKey = $row['y'] ? $row['y'] . '年' : '历史未知年';
                 $mKey = $row['m'] ? str_replace('-', '年', $row['m']) . '月' : '历史未知月';
-                
+
                 if (!isset($summary['years'][$yKey])) $summary['years'][$yKey] = ['count' => 0, 'profit' => 0];
                 if (!isset($summary['months'][$mKey])) $summary['months'][$mKey] = ['count' => 0, 'profit' => 0];
-                
+
                 $summary['years'][$yKey]['count'] += (int)$row['c'];
                 $summary['years'][$yKey]['profit'] += (float)$row['p'];
                 $summary['months'][$mKey]['count'] += (int)$row['c'];
@@ -205,13 +205,13 @@ try {
 
         // --- 【核心修复】：执行 API 后端强制脱敏，切断 F12 抓包泄露 ---
         $statusLockMap = [
-            'US' => 'lock_tab_us', 'TRANSIT' => 'lock_tab_transit', 'CN_WH' => 'lock_tab_cn', 
-            'SOLD' => 'lock_tab_sold', 'PARTS' => 'lock_tab_parts', 'PARTS_SOLD' => 'lock_tab_parts_sold', 
+            'US' => 'lock_tab_us', 'TRANSIT' => 'lock_tab_transit', 'CN_WH' => 'lock_tab_cn',
+            'SOLD' => 'lock_tab_sold', 'PARTS' => 'lock_tab_parts', 'PARTS_SOLD' => 'lock_tab_parts_sold',
             'REPAIR' => 'lock_tab_repair', 'REPAIR_DONE' => 'lock_tab_repair_done'
         ];
         $lock_col = $statusLockMap[$status] ?? '';
         $is_tab_locked = $lock_col ? (($ownerData[$lock_col] ?? 0) == 1) : false;
-        
+
         $can_view_finance = ($perm_finance == 1) && !($is_tab_locked && !$unlocked);
 
         if (!$can_view_finance) {
@@ -219,7 +219,7 @@ try {
                 $row = mask_financial_fields($row);
             }
             unset($row);
-            
+
             $summary['tc'] = '***';
             $summary['tf'] = '***';
             $summary['tp'] = '***';
@@ -233,9 +233,9 @@ try {
         // ----------------------------------------------------
 
         echo json_encode(['status' => 'success', 'data' => $data, 'total' => $filteredTotal, 'summary' => $summary]);
-    } 
+    }
     elseif ($action === 'batch_update_status') {
-        if ($perm_edit == 0) throw new Exception("权限不足");
+        if ($perm_edit == 0) throw new HttpException("权限不足");
         $ids = parse_ids((string) ($_POST['ids'] ?? ''));
         $new_status = (string) ($_POST['status'] ?? '');
         require_status_access($new_status, $currUser, $ownerData);
@@ -247,19 +247,19 @@ try {
         }
         if ($ids !== []) {
             $inQuery = implode(',', array_fill(0, count($ids), '?'));
-            
+
             // --- 核心修复：批量流转锁校验 ---
             $stmtStatus = $pdo->prepare("SELECT DISTINCT status FROM inventory_items WHERE id IN ($inQuery) AND user_id = ?");
             $stmtStatus->execute(array_merge($ids, [$owner_id]));
             $batch_statuses = $stmtStatus->fetchAll(PDO::FETCH_COLUMN);
             $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
-            
+
             foreach ($batch_statuses as $batch_status) {
                 $source_lock = $statusLockMap[$batch_status] ?? '';
                 $target_lock = $statusLockMap[$new_status] ?? '';
                 // 彻底放开：批量流转和退回不再受财务锁限制
 //                if ((($ownerData[$source_lock] ?? 0) == 1 || ($ownerData[$target_lock] ?? 0) == 1) && !$unlocked) {
-//                    throw new Exception("安全拦截：选定批次涉及已锁定财务的仓库，请先解锁后再流转！");
+//                    throw new HttpException("安全拦截：选定批次涉及已锁定财务的仓库，请先解锁后再流转！");
 //                }
             }
             // ------------------------------------------------
@@ -270,7 +270,7 @@ try {
                 $stmtCheck = $pdo->prepare("SELECT id FROM inventory_items WHERE id IN ($inQuery) AND user_id = ? AND (receiver IS NULL OR receiver = '' OR collected_amount <= 0)");
                 $stmtCheck->execute($checkParams);
                 if ($stmtCheck->fetchColumn()) {
-                    throw new Exception("安全拦截：部分设备缺失收货人或收款金额，拒绝流转至已售！");
+                    throw new HttpException("安全拦截：部分设备缺失收货人或收款金额，拒绝流转至已售！");
                 }
             }
 
@@ -286,7 +286,7 @@ try {
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'batch_edit') {
-        if ($perm_edit == 0) throw new Exception("权限不足");
+        if ($perm_edit == 0) throw new HttpException("权限不足");
 
         // 🚀 核心修复：安全拦截，防止越权抓包批量修改财务数据（增加保险箱锁校验）
         $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
@@ -299,10 +299,9 @@ try {
         }
         $maxBatchQuantity = max(array_map(static fn (array $item): int => (int) $item['quantity'], $batchItems));
 
-        // === 修复：收款金额是业务销售数据，不应受财务权限和仓库锁的拦截 ===
-        if (isset($_POST['update_cost']) || isset($_POST['update_freight'])) {
-            if ($perm_finance == 0) throw new Exception("安全拦截：您没有修改财务数据的权限！");
-            
+        if (isset($_POST['update_cost']) || isset($_POST['update_freight']) || isset($_POST['update_collected_amount'])) {
+            if ($perm_finance == 0) throw new HttpException("安全拦截：您没有修改财务数据的权限！");
+
             // 校验当前这批设备所在的仓库是否被锁
             if (!empty($ids)) {
                 $inQueryCheck = implode(',', array_fill(0, count($ids), '?'));
@@ -310,39 +309,34 @@ try {
                 $stmtStatus = $pdo->prepare("SELECT DISTINCT status FROM inventory_items WHERE id IN ($inQueryCheck) AND user_id = ?");
                 $stmtStatus->execute(array_merge($ids, [$owner_id]));
                 $batch_statuses = $stmtStatus->fetchAll(PDO::FETCH_COLUMN);
-                
-                foreach ($batch_statuses as $batch_status) {
-                    $lock_col = $statusLockMap[$batch_status] ?? '';
-                    $is_tab_locked = $lock_col ? (($ownerData[$lock_col] ?? 0) == 1) : false;
-                    
-                    if ($is_tab_locked && !$unlocked) {
-                        throw new Exception("安全拦截：选定批次包含已锁定财务的仓库，请先输入保险箱密码解锁后再批量修改！");
-                    }
+
+                if (!can_manage_financial_values($perm_finance, $ownerData, $batch_statuses, $unlocked)) {
+                    throw new HttpException("安全拦截：选定批次包含已锁定财务的仓库，请先输入保险箱密码解锁后再批量修改！");
                 }
             }
-        } 
-        if (empty($ids)) throw new Exception("未选择");
+        }
+        if (empty($ids)) throw new HttpException("未选择");
         $updates = []; $params = [];
-        
+
         if (isset($_POST['update_batch_no'])) { $updates[] = "batch_no = ?"; $params[] = bounded_text($_POST['batch_no'] ?? '', '批次', 100); }
         if (isset($_POST['update_config'])) { $updates[] = "config_desc = ?"; $params[] = bounded_text($_POST['config_desc'] ?? '', '配置', 255); }
         // 核心修改：利用 SQL 语句在底层自动将输入的单价乘以设备本身的 quantity 数量
-        if (isset($_POST['update_cost'])) { 
-            $updates[] = "cost_rmb = quantity * ?"; 
+        if (isset($_POST['update_cost'])) {
+            $updates[] = "cost_rmb = quantity * ?";
             $unitCost = bounded_money($_POST['unit_cost'] ?? 0, '单件成本');
             bounded_money($unitCost * $maxBatchQuantity, '总成本');
             $params[] = $unitCost;
         }
-        if (isset($_POST['update_freight'])) { 
-            $updates[] = "freight = quantity * ?"; 
+        if (isset($_POST['update_freight'])) {
+            $updates[] = "freight = quantity * ?";
             $unitFreight = bounded_money($_POST['unit_freight'] ?? 0, '单件运费');
             bounded_money($unitFreight * $maxBatchQuantity, '总运费');
             $params[] = $unitFreight;
         }
         if (isset($_POST['update_receiver'])) { $updates[] = "receiver = ?"; $params[] = bounded_text($_POST['receiver'] ?? '', '收货人', 100); }
         if (isset($_POST['update_remarks'])) { $updates[] = "remarks = ?"; $params[] = bounded_text($_POST['remarks'] ?? '', '备注', 255); }
-        if (isset($_POST['update_collected_amount'])) { 
-            $updates[] = "collected_amount = quantity * ?"; 
+        if (isset($_POST['update_collected_amount'])) {
+            $updates[] = "collected_amount = quantity * ?";
             $unitCollected = bounded_money($_POST['unit_collected'] ?? 0, '单件收款金额');
             bounded_money($unitCollected * $maxBatchQuantity, '总收款金额');
             $params[] = $unitCollected;
@@ -364,7 +358,7 @@ try {
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'batch_delete') {
-        if ($perm_delete == 0) throw new Exception("无权删除");
+        if ($perm_delete == 0) throw new HttpException("无权删除");
         $ids = parse_ids((string) ($_POST['ids'] ?? ''));
         $pdo->beginTransaction();
         try {
@@ -374,21 +368,21 @@ try {
         }
         if (!empty($ids)) {
             $inQuery = implode(',', array_fill(0, count($ids), '?'));
-            
+
             // --- 核心修复：批量删除锁校验 ---
             $stmtStatus = $pdo->prepare("SELECT DISTINCT status FROM inventory_items WHERE id IN ($inQuery) AND user_id = ?");
             $stmtStatus->execute(array_merge($ids, [$owner_id]));
             $batch_statuses = $stmtStatus->fetchAll(PDO::FETCH_COLUMN);
             $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
-            
+
             foreach ($batch_statuses as $batch_status) {
                 $lock_col = $statusLockMap[$batch_status] ?? '';
                 if ($lock_col && ($ownerData[$lock_col] ?? 0) == 1 && !$unlocked) {
-                    throw new Exception("安全拦截：选定批次包含已锁定财务的仓库，请先解锁后再删除！");
+                    throw new HttpException("安全拦截：选定批次包含已锁定财务的仓库，请先解锁后再删除！");
                 }
             }
             // ------------------------------------------------
-            
+
             $params = array_merge($ids, [$owner_id]);
             $stmt = $pdo->prepare("DELETE FROM inventory_items WHERE id IN ($inQuery) AND user_id = ?");
             $stmt->execute($params);
@@ -401,24 +395,29 @@ try {
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'dispatch_part') {
-        if ($perm_edit == 0) throw new Exception("无权操作");
+        if ($perm_edit == 0) throw new HttpException("无权操作");
         require_status_access('PARTS', $currUser, $ownerData);
         require_status_access('PARTS_SOLD', $currUser, $ownerData);
-        $id = intval($_POST['id'] ?? 0);
-        $dispatch_qty = intval($_POST['dispatch_qty'] ?? 0);
+        $id = positive_int_input($_POST['id'] ?? null, '记录编号');
+        $dispatch_qty = positive_int_input($_POST['dispatch_qty'] ?? null, '出库数量', 100000);
         $receiver = bounded_text($_POST['receiver'] ?? '', '收货人', 100, true);
         $unit_collected = bounded_money($_POST['unit_collected'] ?? 0, '单件收款金额');
+
+        $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
+        if (!can_manage_financial_values($perm_finance, $ownerData, ['PARTS', 'PARTS_SOLD'], $unlocked)) {
+            throw new HttpException("安全拦截：配件出库涉及财务数据，请先取得财务权限并解锁相关仓库！");
+        }
 
         $pdo->beginTransaction();
         try {
             $item = require_tenant_item($pdo, $id, $owner_id, true);
-            if ($item['status'] !== 'PARTS') throw new Exception("找不到该配件或配件已被转移");
-            if ($dispatch_qty <= 0 || $dispatch_qty > $item['quantity']) throw new Exception("出库数量输入不合法 (必须大于0且不能超过实际库存)");
+            if ($item['status'] !== 'PARTS') throw new HttpException("找不到该配件或配件已被转移");
+            if ($dispatch_qty <= 0 || $dispatch_qty > $item['quantity']) throw new HttpException("出库数量输入不合法 (必须大于0且不能超过实际库存)");
 
             $total_collected = bounded_money($unit_collected * $dispatch_qty, '总收款金额');
             $unit_cost = $item['quantity'] > 0 ? ($item['cost_rmb'] / $item['quantity']) : 0;
             $unit_freight = $item['quantity'] > 0 ? ($item['freight'] / $item['quantity']) : 0;
-            
+
             $dispatch_cost = $unit_cost * $dispatch_qty;
             $dispatch_freight = $unit_freight * $dispatch_qty;
 
@@ -429,7 +428,7 @@ try {
                 $new_qty = $item['quantity'] - $dispatch_qty;
                 $new_cost = $item['cost_rmb'] - $dispatch_cost;
                 $new_freight = $item['freight'] - $dispatch_freight;
-                
+
                 // --- 修复：同步按比例扣减留在仓库里的母体收款金额，防止被两头重复计算利润 ---
                 $unit_collected_orig = $item['quantity'] > 0 ? ($item['collected_amount'] / $item['quantity']) : 0;
                 $new_collected = $item['collected_amount'] - ($unit_collected_orig * $dispatch_qty);
@@ -450,10 +449,10 @@ try {
     elseif ($action === 'save') {
         $id = (string) ($_POST['id'] ?? '');
         if ($id !== '') {
-            if (preg_match('/^[1-9][0-9]*$/', $id) !== 1) throw new Exception("记录编号无效。");
-            if ($perm_edit == 0) throw new Exception("安全拦截：您没有编辑/流转设备的权限！");
+            $id = (string) positive_int_input($id, '记录编号');
+            if ($perm_edit == 0) throw new HttpException("安全拦截：您没有编辑/流转设备的权限！");
         } else {
-            if ($perm_add == 0) throw new Exception("安全拦截：您没有新增设备的权限！");
+            if ($perm_add == 0) throw new HttpException("安全拦截：您没有新增设备的权限！");
         }
         $input = validate_inventory_input($_POST);
         $new_status = $input['status'];
@@ -468,9 +467,9 @@ try {
         $stmtLock = $pdo->prepare("SELECT GET_LOCK(?, 5)"); // 最多等待5秒
         $stmtLock->execute([$lockName]);
         $lockAcquired = $stmtLock->fetchColumn();
-        
+
         if (!$lockAcquired) {
-            throw new Exception("🛑 系统繁忙：有同事正在极速操作该设备，请稍后再试！");
+            throw new HttpException("🛑 系统繁忙：有同事正在极速操作该设备，请稍后再试！");
         }
 
         try {
@@ -486,34 +485,32 @@ try {
                     $stmtCheck->execute([$service_no, $owner_id]);
                 }
                 if ($stmtCheck->fetch()) {
-                    throw new Exception("操作失败：服务编号【{$service_no}】在您的主流程电脑仓库中已存在！只有售后维修或零配件仓允许重复录入。");
+                    throw new HttpException("操作失败：服务编号【{$service_no}】在您的主流程电脑仓库中已存在！只有售后维修或零配件仓允许重复录入。");
                 }
             }
 
             if ($id) {
                 $item = require_tenant_item($pdo, (int) $id, $owner_id, true);
                 require_status_access((string) $item['status'], $currUser, $ownerData);
-                
+
                 $post_updated_at = $_POST['updated_at'] ?? '';
                 if ($post_updated_at !== '' && $item['updated_at'] !== $post_updated_at) {
-                    throw new Exception("🛑 保存失败：该设备刚刚已被其他同事修改，请刷新页面获取最新数据后再编辑，以免覆盖别人数据！");
+                    throw new HttpException("🛑 保存失败：该设备刚刚已被其他同事修改，请刷新页面获取最新数据后再编辑，以免覆盖别人数据！");
                 }
-                
-                // 重新校验财务权限
-                $statusLockMap = ['US'=>'lock_tab_us', 'TRANSIT'=>'lock_tab_transit', 'CN_WH'=>'lock_tab_cn', 'SOLD'=>'lock_tab_sold', 'PARTS'=>'lock_tab_parts', 'PARTS_SOLD'=>'lock_tab_parts_sold', 'REPAIR'=>'lock_tab_repair', 'REPAIR_DONE'=>'lock_tab_repair_done'];
-                $lock_col = $statusLockMap[$item['status']] ?? '';
-                $is_tab_locked = $lock_col ? (($ownerData[$lock_col] ?? 0) == 1) : false;
-                $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
-                $can_edit_finance = ($perm_finance == 1) && !($is_tab_locked && !$unlocked);
 
-                if (!$can_edit_finance) {
-                    $old_qty = ($item['quantity'] > 0) ? $item['quantity'] : 1;
-                    $cost_rmb = ($item['cost_rmb'] / $old_qty) * $qty;
-                    $freight = ($item['freight'] / $old_qty) * $qty;
-                } else {
-                    $cost_rmb = $input['cost_rmb'];
-                    $freight = $input['freight'];
-                }
+                // 重新校验财务权限
+                $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
+                $can_edit_finance = can_manage_financial_values(
+                    $perm_finance,
+                    $ownerData,
+                    [(string) $item['status'], $new_status],
+                    $unlocked
+                );
+                $financial = financial_values_for_write($input, $item, $can_edit_finance);
+                $cost_rmb = $financial['cost_rmb'];
+                $freight = $financial['freight'];
+                $collected = $financial['collected_amount'];
+                require_sold_record_details($new_status, $input['receiver'], $collected);
 
                 if ($item['status'] !== $new_status) {
                     $stmt = $pdo->prepare("UPDATE inventory_items SET service_no=?, batch_no=?, quantity=?, status=?, status_date=CURRENT_DATE(), status_timestamp=CURRENT_TIMESTAMP(), config_desc=?, cost_rmb=?, freight=?, receiver=?, remarks=?, collected_amount=? WHERE id=? AND user_id=?");
@@ -522,22 +519,21 @@ try {
                 }
                 $stmt->execute([$service_no, $input['batch_no'], $qty, $new_status, $input['config_desc'], $cost_rmb, $freight, $input['receiver'], $input['remarks'], $collected, $id, $owner_id]);
             } else {
-                $statusLockMap = ['US'=>'lock_tab_us', 'TRANSIT'=>'lock_tab_transit', 'CN_WH'=>'lock_tab_cn', 'SOLD'=>'lock_tab_sold', 'PARTS'=>'lock_tab_parts', 'PARTS_SOLD'=>'lock_tab_parts_sold', 'REPAIR'=>'lock_tab_repair', 'REPAIR_DONE'=>'lock_tab_repair_done'];
-                $lock_col = $statusLockMap[$new_status] ?? '';
-                $is_tab_locked = $lock_col ? (($ownerData[$lock_col] ?? 0) == 1) : false;
                 $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
-                $can_edit_finance = ($perm_finance == 1) && !($is_tab_locked && !$unlocked);
+                $can_edit_finance = can_manage_financial_values($perm_finance, $ownerData, [$new_status], $unlocked);
+                $financial = financial_values_for_write($input, null, $can_edit_finance);
+                $cost_rmb = $financial['cost_rmb'];
+                $freight = $financial['freight'];
+                $collected = $financial['collected_amount'];
+                require_sold_record_details($new_status, $input['receiver'], $collected);
 
-                $cost_rmb = $can_edit_finance ? $input['cost_rmb'] : 0;
-                $freight = $can_edit_finance ? $input['freight'] : 0;
-                
                 $stmt = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, batch_no, quantity, status, status_date, status_timestamp, config_desc, cost_rmb, freight, receiver, remarks, collected_amount) VALUES (?, ?, ?, ?, ?, CURRENT_DATE(), CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$owner_id, $service_no, $input['batch_no'], $qty, $new_status, $input['config_desc'], $cost_rmb, $freight, $input['receiver'], $input['remarks'], $collected]);
             }
-            
+
             $pdo->commit();
             echo json_encode(['status' => 'success']);
-            
+
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -547,15 +543,15 @@ try {
             // 🛡️ 无论保存成功还是发生报错，务必释放应用锁，防止锁死后续正常操作
             $pdo->prepare("SELECT RELEASE_LOCK(?)")->execute([$lockName]);
         }
-    } 
+    }
     elseif ($action === 'update_status') {
-        if ($perm_edit == 0) throw new Exception("无权操作");
+        if ($perm_edit == 0) throw new HttpException("无权操作");
         $new_status = (string) ($_POST['status'] ?? '');
-        $id = (int) ($_POST['id'] ?? 0);
+        $id = positive_int_input($_POST['id'] ?? null, '记录编号');
         require_status_access($new_status, $currUser, $ownerData);
         $item = require_tenant_item($pdo, $id, $owner_id);
         require_status_access((string) $item['status'], $currUser, $ownerData);
-        
+
         // --- 核心修复：流转时校验源仓库和目标仓库的保险箱锁 ---
         $stmtOld = $pdo->prepare("SELECT status FROM inventory_items WHERE id = ? AND user_id = ?");
         $stmtOld->execute([$id, $owner_id]);
@@ -566,31 +562,31 @@ try {
             $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
             // 彻底放开：单条流转和退回不再受财务锁限制
 //            if ((($ownerData[$source_lock] ?? 0) == 1 || ($ownerData[$target_lock] ?? 0) == 1) && !$unlocked) {
-//                throw new Exception("安全拦截：涉及锁定仓库的流转操作，必须先验证财务密码解锁！");
+//                throw new HttpException("安全拦截：涉及锁定仓库的流转操作，必须先验证财务密码解锁！");
 //            }
         }
         // ------------------------------------------------
-        
+
         // --- 新增：安全拦截，防止无资料强制流转至已售 ---
         if (in_array($new_status, ['SOLD', 'PARTS_SOLD'])) {
             $stmtCheck = $pdo->prepare("SELECT id FROM inventory_items WHERE id = ? AND user_id = ? AND (receiver IS NULL OR receiver = '' OR collected_amount <= 0)");
             $stmtCheck->execute([$id, $owner_id]);
             if ($stmtCheck->fetchColumn()) {
-                throw new Exception("安全拦截：该设备缺失收货人或收款金额，拒绝流转至已售！");
+                throw new HttpException("安全拦截：该设备缺失收货人或收款金额，拒绝流转至已售！");
             }
         }
         // ------------------------------------------------
-        
+
         $stmt = $pdo->prepare("UPDATE inventory_items SET status = ?, status_date = CURRENT_DATE(), status_timestamp = CURRENT_TIMESTAMP() WHERE id = ? AND user_id = ?");
         $stmt->execute([$new_status, $id, $owner_id]);
         echo json_encode(['status' => 'success']);
-    } 
+    }
     elseif ($action === 'delete') {
-        if ($perm_delete == 0) throw new Exception("无权操作");
-        $id = (int) ($_POST['id'] ?? 0);
+        if ($perm_delete == 0) throw new HttpException("无权操作");
+        $id = positive_int_input($_POST['id'] ?? null, '记录编号');
         $item = require_tenant_item($pdo, $id, $owner_id);
         require_status_access((string) $item['status'], $currUser, $ownerData);
-        
+
         // --- 核心修复：删除时校验仓库的保险箱锁 ---
         $stmtOld = $pdo->prepare("SELECT status FROM inventory_items WHERE id = ? AND user_id = ?");
         $stmtOld->execute([$id, $owner_id]);
@@ -599,38 +595,38 @@ try {
             $source_lock = $statusLockMap[$old_status] ?? '';
             $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
             if ($source_lock && ($ownerData[$source_lock] ?? 0) == 1 && !$unlocked) {
-                throw new Exception("安全拦截：该设备所在仓库的财务已锁定，请先解锁后再删除！");
+                throw new HttpException("安全拦截：该设备所在仓库的财务已锁定，请先解锁后再删除！");
             }
         }
         // ------------------------------------------------
-        
+
         $stmt = $pdo->prepare("DELETE FROM inventory_items WHERE id = ? AND user_id = ?");
         $stmt->execute([$id, $owner_id]);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'import') {
-        if ($perm_import == 0) throw new Exception("安全拦截：您没有批量导入数据的权限！");
+        if ($perm_import == 0) throw new HttpException("安全拦截：您没有批量导入数据的权限！");
         $json = file_get_contents('php://input', false, null, 0, 5 * 1024 * 1024 + 1);
-        if (!is_string($json) || strlen($json) > 5 * 1024 * 1024) throw new Exception("导入文件不能超过 5MB。");
+        if (!is_string($json) || strlen($json) > 5 * 1024 * 1024) throw new HttpException("导入文件不能超过 5MB。");
         $rows = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
-        if (!is_array($rows) || $rows === []) throw new Exception("无数据");
-        if (count($rows) > 500) throw new Exception("单次最多导入 500 条记录。");
-        
+        if (!is_array($rows) || $rows === []) throw new HttpException("无数据");
+        if (count($rows) > 500) throw new HttpException("单次最多导入 500 条记录。");
+
         $pdo->beginTransaction();
         try {
             $statusMap = ['美国'=>'US', '国外途中'=>'TRANSIT', '国内仓'=>'CN_WH', '已售'=>'SOLD', '售后维修'=>'REPAIR', '维修完毕'=>'REPAIR_DONE', '零配件仓'=>'PARTS', '已售配件'=>'PARTS_SOLD'];
             $success = 0;
-            
+
             foreach ($rows as $row) {
-                if (!is_array($row)) throw new Exception("导入数据格式无效。");
+                if (!is_array($row)) throw new HttpException("导入数据格式无效。");
                 if (empty($row['服务编号']) && empty($row['编号'])) continue;
                 $service_no = bounded_text($row['服务编号'] ?? $row['编号'], '服务编号', 100, true);
                 $status = $statusMap[$row['状态'] ?? '美国仓'] ?? 'US';
                 require_status_access($status, $currUser, $ownerData);
                 $quantityRaw = (isset($row['数量']) && $row['数量'] !== '') ? $row['数量'] : 1;
-                if (filter_var($quantityRaw, FILTER_VALIDATE_INT) === false) throw new Exception("数量必须是整数。");
+                if (filter_var($quantityRaw, FILTER_VALIDATE_INT) === false) throw new HttpException("数量必须是整数。");
                 $qty = (int) $quantityRaw;
-                if ($qty < 1 || $qty > 100000) throw new Exception("数量必须在 1 到 100000 之间。");
+                if ($qty < 1 || $qty > 100000) throw new HttpException("数量必须在 1 到 100000 之间。");
                 $rowBatch = bounded_text($row['批次'] ?? '', '批次', 100);
                 $rowConfig = bounded_text($row['配置'] ?? '', '配置', 255);
                 $rowRemarks = bounded_text($row['备注'] ?? '', '备注', 255);
@@ -639,7 +635,7 @@ try {
                         bounded_money($row[$moneyColumn], $moneyColumn);
                     }
                 }
-                
+
                 // --- 修复：双向流转必须合并查找，防止误判为新设备导致克隆双胞胎 ---
                 if (in_array($status, ['REPAIR', 'REPAIR_DONE'])) {
                     $stmtCheck = $pdo->prepare("SELECT * FROM inventory_items WHERE service_no = ? AND user_id = ? AND status IN ('REPAIR', 'REPAIR_DONE') ORDER BY id DESC LIMIT 1");
@@ -660,27 +656,29 @@ try {
                 $target_lock = $statusLockMap[$status] ?? '';
                 $source_lock = $existsData ? ($statusLockMap[$existsData['status']] ?? '') : '';
                 $is_tab_locked = ($target_lock && ($ownerData[$target_lock] ?? 0) == 1) || ($source_lock && ($ownerData[$source_lock] ?? 0) == 1);
-                
+
                 $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
                 $can_edit_finance = ($perm_finance == 1) && !($is_tab_locked && !$unlocked);
-                
+
                 // --- 修复：提取旧数量用于等比缩放，防止历史账本被暴跌稀释 ---
                 $old_qty = ($existsData && $existsData['quantity'] > 0) ? $existsData['quantity'] : 1;
                 $fallback_collected = $existsData ? (($existsData['collected_amount'] / $old_qty) * $qty) : 0;
-                
-                $collected = (isset($row['单件收款金额']) && $row['单件收款金额'] !== '') ? (float)$row['单件收款金额'] * $qty : ((isset($row['收款金额']) && $row['收款金额'] !== '') ? (float)$row['收款金额'] : $fallback_collected);
-                
+
+                $collected = $can_edit_finance
+                    ? ((isset($row['单件收款金额']) && $row['单件收款金额'] !== '') ? (float) $row['单件收款金额'] * $qty : ((isset($row['收款金额']) && $row['收款金额'] !== '') ? (float) $row['收款金额'] : $fallback_collected))
+                    : $fallback_collected;
+
                 $rec = bounded_text($row['收货人'] ?? ($existsData['receiver'] ?? ''), '收货人', 100);
                 $collected = bounded_money($collected, '收款金额');
                 if (in_array($status, ['SOLD', 'PARTS_SOLD']) && (empty($rec) || $collected <= 0)) {
-                    throw new Exception("安全拦截：导入失败！编号 [{$service_no}] 流转至已售必须填写收货人和有效收款金额！");
+                    throw new HttpException("安全拦截：导入失败！编号 [{$service_no}] 流转至已售必须填写收货人和有效收款金额！");
                 }
 
                 if ($existsData) {
                     if ($can_edit_finance) {
                         $fallback_cost = ($existsData['cost_rmb'] / $old_qty) * $qty;
                         $fallback_freight = ($existsData['freight'] / $old_qty) * $qty;
-                        
+
                         $cost = (isset($row['单件成本']) && $row['单件成本'] !== '') ? (float)$row['单件成本'] * $qty : ((isset($row['成本']) && $row['成本'] !== '') ? (float)$row['成本'] : ((isset($row['人民币成本']) && $row['人民币成本'] !== '') ? (float)$row['人民币成本'] : $fallback_cost));
                         $freight = (isset($row['单件运费']) && $row['单件运费'] !== '') ? (float)$row['单件运费'] * $qty : ((isset($row['运费']) && $row['运费'] !== '') ? (float)$row['运费'] : $fallback_freight);
                     } else {
@@ -691,7 +689,7 @@ try {
 
                     // === 核心修复：只有当状态发生真正改变时，才更新流转时间。否则强制保留原本的历史时间，防止财务报表日期被摧毁 ===
                     // === 核心修复：只有当状态发生真正改变时，才更新流转时间。否则强制保留原本的历史时间，防止财务报表日期被摧毁 ===
-                    
+
                     // 【安全修复】：安全提取 Excel 数据，若表格未填写这些列，强制保留数据库原有的历史数据，绝不强行清空
                     $batch_no = array_key_exists('批次', $row) ? $rowBatch : bounded_text($existsData['batch_no'] ?? '', '批次', 100);
                     $config_desc = array_key_exists('配置', $row) ? $rowConfig : bounded_text($existsData['config_desc'] ?? '', '配置', 255);
@@ -715,12 +713,15 @@ try {
                     } else {
                         $cost = 0; $freight = 0;
                     }
-                    
-                    // 2. 处理普通的销售收款字段（不受限）
-                    $collected = (isset($row['单件收款金额']) && $row['单件收款金额'] !== '') ? (float)$row['单件收款金额'] * $qty : ((isset($row['收款金额']) && $row['收款金额'] !== '') ? (float)$row['收款金额'] : 0);
+
+                    $collected = $can_edit_finance
+                        ? ((isset($row['单件收款金额']) && $row['单件收款金额'] !== '') ? (float) $row['单件收款金额'] * $qty : ((isset($row['收款金额']) && $row['收款金额'] !== '') ? (float) $row['收款金额'] : 0))
+                        : 0;
 
                     $cost = bounded_money($cost, '成本');
                     $freight = bounded_money($freight, '运费');
+                    $collected = bounded_money($collected, '收款金额');
+                    require_sold_record_details($status, $rec, $collected);
                     $stmtInsert = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, batch_no, quantity, config_desc, status, status_date, status_timestamp, cost_rmb, freight, receiver, remarks, collected_amount) VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE(), CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?)");
                     $stmtInsert->execute([$owner_id, $service_no, $rowBatch, $qty, $rowConfig, $status, $cost, $freight, $rec, $rowRemarks, $collected]);
                 }
@@ -732,10 +733,10 @@ try {
             $pdo->rollBack();
             throw $e;
         }
-    } 
+    }
     elseif ($action === 'verify_lock') {
         $pwd = $_POST['pwd'] ?? '';
-        
+
         $stmtOwner = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
         $stmtOwner->execute([$owner_id]);
         $owner_pwd = $stmtOwner->fetchColumn();
@@ -747,25 +748,25 @@ try {
             $self_pwd = $stmtSelf->fetchColumn();
         }
 
-        if (empty($owner_pwd) && empty($self_pwd)) { 
+        if (empty($owner_pwd) && empty($self_pwd)) {
             $_SESSION['finance_unlocked_' . $user_id] = true;
-            echo json_encode(['status' => 'success']); 
+            echo json_encode(['status' => 'success']);
             exit;
         }
 
         // --- 修复：优先校验操作者自己设置的专属保险箱密码，如果没有设置，再用老板密码兜底 ---
         $target_pwd = ($parent_id > 0 && !empty($self_pwd)) ? $self_pwd : $owner_pwd;
         $target_id = ($parent_id > 0 && !empty($self_pwd)) ? $user_id : $owner_id;
-        
-        if (password_verify($pwd, $target_pwd) || ($target_pwd === $pwd && $pwd !== '')) { 
-            if ($target_pwd === $pwd && $pwd !== '') { 
+
+        if (password_verify($pwd, $target_pwd) || ($target_pwd === $pwd && $pwd !== '')) {
+            if ($target_pwd === $pwd && $pwd !== '') {
                 $new_hash = password_hash($pwd, PASSWORD_DEFAULT);
                 $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ?")->execute([$new_hash, $target_id]);
             }
             $_SESSION['finance_unlocked_' . $user_id] = true;
-            echo json_encode(['status' => 'success']); 
+            echo json_encode(['status' => 'success']);
         } else {
-            echo json_encode(['status' => 'error', 'message' => '验证失败：此区域受系统主账号保护，必须输入主账号的财务密码！']); 
+            echo json_encode(['status' => 'error', 'message' => '验证失败：此区域受系统主账号保护，必须输入主账号的财务密码！']);
         }
     }
     // === 🚀 新增：接收前端主动上锁的强制指令 ===
@@ -774,28 +775,28 @@ try {
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'get_sec_questions') {
-        if ($parent_id > 0) throw new Exception("子账号不支持找回功能");
+        if ($parent_id > 0) throw new HttpException("子账号不支持找回功能");
         $stmt = $pdo->prepare("SELECT sec_q1, sec_q2, sec_q3 FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($user && !empty($user['sec_q1'])) { echo json_encode(['status' => 'success', 'data' => $user]); } 
-        else { throw new Exception("您未绑定密保问题，请先在设置中绑定。"); }
+        if ($user && !empty($user['sec_q1'])) { echo json_encode(['status' => 'success', 'data' => $user]); }
+        else { throw new HttpException("您未绑定密保问题，请先在设置中绑定。"); }
     }
     elseif ($action === 'reset_lock_with_sec') {
-        if ($parent_id > 0) throw new Exception("无权操作");
-        
+        if ($parent_id > 0) throw new HttpException("无权操作");
+
         $login_pwd = $_POST['login_pwd'] ?? '';
         $stmt_pwd = $pdo->prepare("SELECT password FROM users WHERE id = ?");
         $stmt_pwd->execute([$user_id]);
         $hash = $stmt_pwd->fetchColumn();
-        if (!password_verify($login_pwd, $hash)) throw new Exception("登录密码输入错误！拒绝重置！");
+        if (!password_verify($login_pwd, $hash)) throw new HttpException("登录密码输入错误！拒绝重置！");
 
         $a1 = trim($_POST['a1'] ?? ''); $a2 = trim($_POST['a2'] ?? ''); $a3 = trim($_POST['a3'] ?? '');
         $new_lock = $_POST['new_lock'] ?? '';
         $stmt = $pdo->prepare("SELECT sec_a1, sec_a2, sec_a3 FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if ($user) {
             $a1_match = password_verify($a1, $user['sec_a1']) || ($user['sec_a1'] === $a1);
             $a2_match = password_verify($a2, $user['sec_a2']) || ($user['sec_a2'] === $a2);
@@ -809,39 +810,39 @@ try {
                 exit;
             }
         }
-        
+
         echo json_encode(['status' => 'error', 'message' => '密保答案验证失败！']);
     }
     elseif ($action === 'reset_sub_lock') {
-        if ($parent_id == 0) throw new Exception("主账号请使用密保找回流程！");
+        if ($parent_id == 0) throw new HttpException("主账号请使用密保找回流程！");
         $login_pwd = $_POST['login_pwd'] ?? '';
         $new_lock = $_POST['new_lock'] ?? '';
-        
+
         $stmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $hash = $stmt->fetchColumn();
-        
-        if (!password_verify($login_pwd, $hash)) throw new Exception("子账号登录密码错误！");
-        
+
+        if (!password_verify($login_pwd, $hash)) throw new HttpException("子账号登录密码错误！");
+
         $hash_to_store = empty($new_lock) ? '' : password_hash($new_lock, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ?");
         $stmt->execute([$hash_to_store, $user_id]);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'update_sec_questions') {
-        if ($parent_id > 0) throw new Exception("子账号无此功能");
+        if ($parent_id > 0) throw new HttpException("子账号无此功能");
         $pwd = $_POST['pwd'] ?? '';
         $stmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $hash = $stmt->fetchColumn();
-        if (!password_verify($pwd, $hash)) throw new Exception("当前登录密码验证失败！");
-        
+        if (!password_verify($pwd, $hash)) throw new HttpException("当前登录密码验证失败！");
+
         $q1 = $_POST['q1'] ?? ''; $a1 = trim($_POST['a1'] ?? '');
         $q2 = $_POST['q2'] ?? ''; $a2 = trim($_POST['a2'] ?? '');
         $q3 = $_POST['q3'] ?? ''; $a3 = trim($_POST['a3'] ?? '');
-        
-        if (!$a1 || !$a2 || !$a3) throw new Exception("三个密保答案都必须填写！");
-        
+
+        if (!$a1 || !$a2 || !$a3) throw new HttpException("三个密保答案都必须填写！");
+
         // --- 增加对密保答案的加密 ---
         $hash_a1 = password_hash($a1, PASSWORD_DEFAULT);
         $hash_a2 = password_hash($a2, PASSWORD_DEFAULT);
@@ -856,11 +857,11 @@ try {
         $old_pwd = (string) ($_POST['old_pwd'] ?? '');
         $new_pwd = (string) ($_POST['new_pwd'] ?? '');
         $passwordCheck = validate_password($new_pwd);
-        if (!$passwordCheck['valid']) throw new Exception(implode(' ', $passwordCheck['errors']));
+        if (!$passwordCheck['valid']) throw new HttpException(implode(' ', $passwordCheck['errors']));
         $stmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $hash = (string) $stmt->fetchColumn();
-        if (!verify_stored_secret($old_pwd, $hash)['valid']) throw new Exception("原密码错误！");
+        if (!verify_stored_secret($old_pwd, $hash)['valid']) throw new HttpException("原密码错误！");
         $new_hash = password_hash($new_pwd, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
         $stmt->execute([$new_hash, $user_id]);
@@ -872,36 +873,37 @@ try {
         $stmt = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $real_pwd = $stmt->fetchColumn();
-        
+
         // 兼容原有的明文判断逻辑
         if (!empty($real_pwd)) {
             $is_match = password_verify($old_lock, $real_pwd) || ($real_pwd === $old_lock);
-            if (!$is_match) throw new Exception("原保险箱密码验证失败！");
+            if (!$is_match) throw new HttpException("原保险箱密码验证失败！");
         }
-        
+
         $hash_to_store = empty($new_pwd) ? '' : password_hash($new_pwd, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ?");
         $stmt->execute([$hash_to_store, $user_id]);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'set_timeout') {
-        $mins = intval($_POST['minutes'] ?? 20);
+        $mins = positive_int_input($_POST['minutes'] ?? 20, '自动锁定时间', 120);
+        if (!in_array($mins, [1, 3, 5, 10, 20], true)) throw new HttpException("不支持的自动锁定时间。");
         $stmt = $pdo->prepare("UPDATE users SET timeout_minutes = ? WHERE id = ?");
         $stmt->execute([$mins, $user_id]);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'update_master_tabs') {
-        if ($parent_id > 0) throw new Exception("无权修改全局配置！");
+        if ($parent_id > 0) throw new HttpException("无权修改全局配置！");
 
         // --- 新增：强制校验保险箱密码 ---
         $stmtPwd = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
         $stmtPwd->execute([$user_id]);
         $real_pwd = $stmtPwd->fetchColumn();
-        
+
         if (!empty($real_pwd)) {
             $input_pwd = $_POST['lock_pwd'] ?? '';
             if (!password_verify($input_pwd, $real_pwd) && $real_pwd !== $input_pwd) {
-                throw new Exception("保险箱密码验证失败，拒绝修改全局锁配置！");
+                throw new HttpException("保险箱密码验证失败，拒绝修改全局锁配置！");
             }
         }
         // ---------------------------------
@@ -912,19 +914,19 @@ try {
 
         $l_us = isset($_POST['l_us']) ? 1 : 0; $l_transit = isset($_POST['l_transit']) ? 1 : 0; $l_cn = isset($_POST['l_cn']) ? 1 : 0; $l_sold = isset($_POST['l_sold']) ? 1 : 0; $l_repair = isset($_POST['l_repair']) ? 1 : 0; $l_repair_done = isset($_POST['l_repair_done']) ? 1 : 0;
         $l_parts = isset($_POST['l_parts']) ? 1 : 0; $l_parts_sold = isset($_POST['l_parts_sold']) ? 1 : 0;
-        
+
         $stmt = $pdo->prepare("UPDATE users SET perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_tab_parts=?, perm_tab_parts_sold=?, lock_tab_us=?, lock_tab_transit=?, lock_tab_cn=?, lock_tab_sold=?, lock_tab_repair=?, lock_tab_repair_done=?, lock_tab_parts=?, lock_tab_parts_sold=? WHERE id=?");
         $stmt->execute([$p_us, $p_transit, $p_cn, $p_sold, $p_repair, $p_repair_done, $p_parts, $p_parts_sold, $l_us, $l_transit, $l_cn, $l_sold, $l_repair, $l_repair_done, $l_parts, $l_parts_sold, $user_id]);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'delete_my_account') {
-        if ($parent_id > 0) throw new Exception("无权");
+        require_self_delete_allowed($currUser);
         $pwd = $_POST['pwd'] ?? '';
         $stmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
         $stmt->execute([$user_id]);
         $hash = $stmt->fetchColumn();
-        if (!password_verify($pwd, $hash)) throw new Exception("验证失败！");
-        
+        if (!password_verify($pwd, $hash)) throw new HttpException("验证失败！");
+
         $pdo->beginTransaction();
         try {
             $pdo->prepare("DELETE FROM inventory_items WHERE user_id = ?")->execute([$user_id]);
@@ -939,35 +941,35 @@ try {
         }
     }
     elseif ($action === 'list_sub_accounts') {
-        if ($parent_id > 0) throw new Exception("无权操作");
+        if ($parent_id > 0) throw new HttpException("无权操作");
         $stmt = $pdo->prepare("SELECT id, username, perm_finance, perm_edit, perm_delete, perm_download_tpl, perm_import, perm_add, perm_export, perm_tab_us, perm_tab_transit, perm_tab_cn, perm_tab_sold, perm_tab_parts, perm_tab_parts_sold, perm_tab_repair, perm_tab_repair_done, perm_history_view, created_at FROM users WHERE parent_id = ? ORDER BY id DESC");
         $stmt->execute([$user_id]);
         echo json_encode(['status' => 'success', 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
     }
     elseif ($action === 'save_sub_account') {
-        if ($parent_id > 0) throw new Exception("无权操作");
+        if ($parent_id > 0) throw new HttpException("无权操作");
         $sub_id = $_POST['sub_id'] ?? '';
         $sub_user = trim((string) ($_POST['sub_user'] ?? ''));
         $sub_pass = (string) ($_POST['sub_pass'] ?? '');
-        if ($sub_user === '' || strlen($sub_user) > 50) throw new Exception("员工用户名格式不正确。");
+        if ($sub_user === '' || strlen($sub_user) > 50) throw new HttpException("员工用户名格式不正确。");
         if ($sub_pass !== '') {
             $passwordCheck = validate_password($sub_pass);
-            if (!$passwordCheck['valid']) throw new Exception(implode(' ', $passwordCheck['errors']));
+            if (!$passwordCheck['valid']) throw new HttpException(implode(' ', $passwordCheck['errors']));
         }
-        
+
         $p_fin = isset($_POST['p_fin']) ? 1 : 0; $p_edt = isset($_POST['p_edt']) ? 1 : 0; $p_del = isset($_POST['p_del']) ? 1 : 0;
         $p_dl = isset($_POST['p_dl']) ? 1 : 0; $p_imp = isset($_POST['p_imp']) ? 1 : 0; $p_add = isset($_POST['p_add']) ? 1 : 0; $p_exp = isset($_POST['p_exp']) ? 1 : 0;
-        
+
         // === 核心安全修复：如果开启或保留了财务查看权限，后端强制校验主账号财务锁，防止恶意添加后门账号 ===
         if ($p_fin === 1) {
             $stmtPwd = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
             $stmtPwd->execute([$user_id]); // 主账号的 user_id
             $real_pwd = $stmtPwd->fetchColumn();
-            
+
             if (!empty($real_pwd)) {
                 $input_pwd = $_POST['lock_pwd'] ?? '';
                 if (!password_verify($input_pwd, $real_pwd) && $real_pwd !== $input_pwd) {
-                    throw new Exception("安全拦截：授权或保留员工的【财务查看权限】必须验证您的财务保险箱密码！");
+                    throw new HttpException("安全拦截：授权或保留员工的【财务查看权限】必须验证您的财务保险箱密码！");
                 }
             }
         }
@@ -976,16 +978,17 @@ try {
         $p_us = isset($_POST['p_us']) ? 1 : 0; $p_transit = isset($_POST['p_transit']) ? 1 : 0; $p_cn = isset($_POST['p_cn']) ? 1 : 0; $p_sold = isset($_POST['p_sold']) ? 1 : 0;
         $p_parts = isset($_POST['p_parts']) ? 1 : 0; $p_parts_sold = isset($_POST['p_parts_sold']) ? 1 : 0;
         $p_repair = isset($_POST['p_repair']) ? 1 : 0; $p_repair_done = isset($_POST['p_repair_done']) ? 1 : 0;
-        $p_hist = isset($_POST['p_hist']) ? intval($_POST['p_hist']) : 999;
-        
+        $p_hist = positive_int_input($_POST['p_hist'] ?? 999, '历史查看范围', 999);
+        if (!in_array($p_hist, [3, 6, 999], true)) throw new HttpException("不支持的历史查看范围。");
+
         if ($sub_id) {
-            if (preg_match('/^[1-9][0-9]*$/', (string) $sub_id) !== 1) throw new Exception("员工账号编号无效。");
+            $sub_id = positive_int_input($sub_id, '员工账号编号');
             $stmtOwned = $pdo->prepare("SELECT id FROM users WHERE id = ? AND parent_id = ?");
             $stmtOwned->execute([$sub_id, $user_id]);
-            if (!$stmtOwned->fetchColumn()) throw new Exception("员工账号不存在或不属于当前主账号。");
+            if (!$stmtOwned->fetchColumn()) throw new HttpException("员工账号不存在或不属于当前主账号。");
             $stmtCheck = $pdo->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
             $stmtCheck->execute([$sub_user, $sub_id]);
-            if($stmtCheck->fetchColumn()) throw new Exception("该用户名已被占用，请换一个！");
+            if($stmtCheck->fetchColumn()) throw new HttpException("该用户名已被占用，请换一个！");
 
             if (!empty($sub_pass)) {
                 $hash = password_hash($sub_pass, PASSWORD_DEFAULT);
@@ -998,9 +1001,9 @@ try {
         } else {
             $stmtCheck = $pdo->prepare("SELECT id FROM users WHERE username = ?");
             $stmtCheck->execute([$sub_user]);
-            if($stmtCheck->fetchColumn()) throw new Exception("该用户名已被占用，请换一个！");
+            if($stmtCheck->fetchColumn()) throw new HttpException("该用户名已被占用，请换一个！");
 
-            if (empty($sub_pass)) throw new Exception("需设置密码");
+            if (empty($sub_pass)) throw new HttpException("需设置密码");
         $hash = password_hash($sub_pass, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("INSERT INTO users (username, password, role, parent_id, perm_finance, perm_edit, perm_delete, perm_download_tpl, perm_import, perm_add, perm_export, perm_tab_us, perm_tab_transit, perm_tab_cn, perm_tab_sold, perm_tab_parts, perm_tab_parts_sold, perm_tab_repair, perm_tab_repair_done, perm_history_view) VALUES (?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$sub_user, $hash, $user_id, $p_fin, $p_edt, $p_del, $p_dl, $p_imp, $p_add, $p_exp, $p_us, $p_transit, $p_cn, $p_sold, $p_parts, $p_parts_sold, $p_repair, $p_repair_done, $p_hist]);
@@ -1016,7 +1019,7 @@ elseif ($action === 'verify_login') {
         $lock_until = $stmtLock->fetchColumn();
         if ($lock_until && strtotime($lock_until) > time()) {
             $rem = ceil((strtotime($lock_until) - time()) / 60);
-            throw new Exception("🚫 账号已被安全锁定，请 $rem 分钟后再试。");
+            throw new HttpException("🚫 账号已被安全锁定，请 $rem 分钟后再试。");
         }
 
         $stmt = $pdo->prepare("SELECT password FROM users WHERE id = ?");
@@ -1030,24 +1033,25 @@ elseif ($action === 'verify_login') {
                 $pdo->prepare('UPDATE users SET password = ? WHERE id = ?')
                     ->execute([$verification['upgrade_hash'], $user_id]);
             }
-            $_SESSION['last_active_time'] = time(); 
+            $_SESSION['last_active_time'] = time();
             echo json_encode(['status' => 'success']);
         } else {
             $new_count = record_auth_failure($pdo, 'username', (string) $u, 5, 15);
             if ($new_count >= 5) {
                 perform_logout();
-                throw new Exception("FORCE_LOGOUT");
+                throw new HttpException("FORCE_LOGOUT");
             } else {
                 $remains = 5 - $new_count;
-                throw new Exception("密码错误！还剩 $remains 次尝试机会。");
+                throw new HttpException("密码错误！还剩 $remains 次尝试机会。");
             }
         }
     }
     elseif ($action === 'delete_sub_account') {
-        if ($parent_id > 0) throw new Exception("无权");
+        if ($parent_id > 0) throw new HttpException("无权");
+        $subId = positive_int_input($_POST['sub_id'] ?? null, '员工账号编号');
         $stmt = $pdo->prepare("DELETE FROM users WHERE id = ? AND parent_id = ?");
-        $stmt->execute([$_POST['sub_id'], $user_id]);
-        if ($stmt->rowCount() !== 1) throw new Exception("员工账号不存在或不属于当前主账号。");
+        $stmt->execute([$subId, $user_id]);
+        if ($stmt->rowCount() !== 1) throw new HttpException("员工账号不存在或不属于当前主账号。");
         echo json_encode(['status' => 'success']);
     }
     else { echo json_encode(['status' => 'error', 'message' => '无效请求']); }
@@ -1059,8 +1063,9 @@ elseif ($action === 'verify_login') {
     http_response_code(500);
     echo json_encode(['status' => 'error', 'message' => '数据库操作暂时无法完成，请稍后重试。请求编号：' . $requestId]);
 } catch (Exception $e) {
-    http_response_code(400);
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    $requestId = safe_log($e);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => '请求暂时无法完成，请稍后重试。请求编号：' . $requestId]);
 } catch (Throwable $e) {
     $requestId = safe_log($e);
     http_response_code(500);

@@ -69,3 +69,19 @@ test('untrusted forwarded addresses cannot evade password recovery throttling', 
     assert_same('203.0.113.31', client_ip($server, []));
     assert_same('198.51.100.99', client_ip($server, ['203.0.113.31']));
 });
+
+test('password recovery records both source network and target account', function (): void {
+    auth_test_database(function (PDO $pdo): void {
+        $keys = recovery_rate_keys('203.0.113.44', 'owner');
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            record_recovery_failure($pdo, $keys);
+        }
+        assert_true(auth_lock_until($pdo, 'username', $keys['username']) instanceof DateTimeImmutable);
+        $statement = $pdo->prepare("SELECT failed_count FROM login_blocks WHERE type = 'ip' AND identifier = ?");
+        $statement->execute([$keys['ip']]);
+        assert_same(5, (int) $statement->fetchColumn());
+        clear_recovery_account_failures($pdo, $keys);
+        assert_same(null, auth_lock_until($pdo, 'username', $keys['username']));
+        assert_same(null, auth_lock_until($pdo, 'ip', $keys['ip']));
+    });
+});

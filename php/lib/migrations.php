@@ -4,7 +4,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/security.php';
 
-const INVENTORY_SCHEMA_VERSION = '202609270001_secure_self_hosted_base';
+const INVENTORY_BASE_SCHEMA_VERSION = '202609270001_secure_self_hosted_base';
+const INVENTORY_SCHEMA_VERSION = '202609270002_release_hardening';
 
 function run_migrations(PDO $pdo): void
 {
@@ -13,22 +14,34 @@ function run_migrations(PDO $pdo): void
         applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
-    $check = $pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE version = ?');
-    $check->execute([INVENTORY_SCHEMA_VERSION]);
-    if ((int) $check->fetchColumn() > 0) {
-        return;
+    if (!migration_was_applied($pdo, INVENTORY_BASE_SCHEMA_VERSION)) {
+        create_core_tables($pdo);
+        migrate_users_table($pdo);
+        migrate_inventory_table($pdo);
+        create_application_tables($pdo);
+        ensure_inventory_indexes($pdo);
+        seed_registration_mode($pdo);
+        report_orphaned_inventory($pdo);
+        record_migration($pdo, INVENTORY_BASE_SCHEMA_VERSION);
     }
 
-    create_core_tables($pdo);
-    migrate_users_table($pdo);
-    migrate_inventory_table($pdo);
-    create_application_tables($pdo);
-    ensure_inventory_indexes($pdo);
-    seed_registration_mode($pdo);
-    report_orphaned_inventory($pdo);
+    if (!migration_was_applied($pdo, INVENTORY_SCHEMA_VERSION)) {
+        apply_release_hardening_migration($pdo);
+        record_migration($pdo, INVENTORY_SCHEMA_VERSION);
+    }
+}
 
+function migration_was_applied(PDO $pdo, string $version): bool
+{
+    $check = $pdo->prepare('SELECT COUNT(*) FROM schema_migrations WHERE version = ?');
+    $check->execute([$version]);
+    return (int) $check->fetchColumn() > 0;
+}
+
+function record_migration(PDO $pdo, string $version): void
+{
     $record = $pdo->prepare('INSERT INTO schema_migrations (version) VALUES (?)');
-    $record->execute([INVENTORY_SCHEMA_VERSION]);
+    $record->execute([$version]);
 }
 
 function create_core_tables(PDO $pdo): void
@@ -77,8 +90,8 @@ function create_core_tables(PDO $pdo): void
     $pdo->exec("CREATE TABLE IF NOT EXISTS inventory_items (
         id INT AUTO_INCREMENT PRIMARY KEY,
         user_id INT NOT NULL DEFAULT 0,
-        service_no VARCHAR(50) NOT NULL,
-        batch_no VARCHAR(50) NULL,
+        service_no VARCHAR(100) NOT NULL,
+        batch_no VARCHAR(100) NULL,
         quantity INT NOT NULL DEFAULT 1,
         status ENUM('US', 'TRANSIT', 'CN_WH', 'SOLD', 'REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD') NOT NULL DEFAULT 'US',
         status_date DATE NULL,
@@ -237,6 +250,20 @@ function report_orphaned_inventory(PDO $pdo): void
     $count = (int) $pdo->query('SELECT COUNT(*) FROM inventory_items i LEFT JOIN users u ON u.id = i.user_id WHERE i.user_id <> 0 AND u.id IS NULL')->fetchColumn();
     if ($count > 0) {
         error_log("Inventory migration retained {$count} orphaned inventory row(s) for manual review");
+    }
+}
+
+function apply_release_hardening_migration(PDO $pdo): void
+{
+    $columns = $pdo->prepare('SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
+    $columns->execute(['inventory_items']);
+    $present = array_fill_keys($columns->fetchAll(PDO::FETCH_COLUMN), true);
+
+    $pdo->exec('ALTER TABLE inventory_items MODIFY COLUMN service_no VARCHAR(100) NOT NULL');
+    $pdo->exec('ALTER TABLE inventory_items MODIFY COLUMN batch_no VARCHAR(100) NULL');
+
+    if (isset($present['cost_us'], $present['cost_rmb'])) {
+        $pdo->exec('UPDATE inventory_items SET cost_rmb = cost_us WHERE (cost_rmb IS NULL OR cost_rmb = 0) AND cost_us IS NOT NULL AND cost_us <> 0');
     }
 }
 

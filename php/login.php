@@ -36,8 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['api_action'])) {
         if ($u === '' || strlen($u) > 50) {
             throw new HttpException('无法验证该账号的找回信息。', 400);
         }
-        if ($lockMsg = login_lock_message($pdo, $ip, $u)) {
-            throw new HttpException($lockMsg, 429);
+        $recoveryKeys = recovery_rate_keys($ip, $u);
+        $recoveryLock = recovery_lock_until($pdo, $recoveryKeys);
+        if ($recoveryLock !== null) {
+            $minutes = max(1, (int) ceil(($recoveryLock->getTimestamp() - time()) / 60));
+            throw new HttpException("找回尝试过多，请 {$minutes} 分钟后再试。", 429);
         }
 
         if ($_POST['api_action'] === 'get_q') {
@@ -45,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['api_action'])) {
             $stmt->execute([$u]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$user || empty($user['sec_q1'])) {
-                record_login_failure($pdo, $ip, $u, false);
+                record_recovery_failure($pdo, $recoveryKeys);
                 throw new HttpException('无法验证该账号的找回信息。', 400);
             }
             echo json_encode(['status' => 'success', 'data' => $user], JSON_UNESCAPED_UNICODE);
@@ -82,12 +85,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['api_action'])) {
                     $checks[2]['upgrade_hash'] ?? $user['sec_a3'],
                     $user['id'],
                 ]);
-                clear_auth_failures($pdo, 'ip', $ip);
-                clear_auth_failures($pdo, 'username', $u);
+                clear_recovery_account_failures($pdo, $recoveryKeys);
                 echo json_encode(['status' => 'success'], JSON_UNESCAPED_UNICODE);
                 exit;
             }
-            record_login_failure($pdo, $ip, $u, false);
+            record_recovery_failure($pdo, $recoveryKeys);
             throw new HttpException('无法验证该账号的找回信息。', 400);
         }
         throw new HttpException('未知操作。', 400);

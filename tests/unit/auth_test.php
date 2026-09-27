@@ -54,3 +54,11 @@ test('legacy plaintext secrets verify once and request a hash upgrade', function
     assert_same(null, $modern['upgrade_hash']);
     assert_false(verify_stored_secret('wrong', $hash)['valid']);
 });
+
+test('password recovery uses independent ip and account rate keys', function (): void {
+    assert_true(function_exists('recovery_rate_keys'), 'recovery_rate_keys() is missing');
+    assert_same(
+        ['ip' => 'recovery-ip:203.0.113.9', 'username' => 'recovery-account:owner'],
+        recovery_rate_keys('203.0.113.9', 'owner')
+    );
+});

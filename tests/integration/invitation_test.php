@@ -132,3 +132,16 @@ test('primary registration validates lengths passwords and open-mode rate limits
         assert_throws(fn () => register_primary_account($pdo, ['username' => 'rate-user-6'] + $base, '203.0.113.21'), RuntimeException::class);
     });
 });
+
+test('primary account limit is checked while registration configuration is locked', function (): void {
+    invitation_test_database(function (PDO $pdo): void {
+        assert_throws(fn () => enforce_primary_account_limit($pdo), LogicException::class);
+        $pdo->beginTransaction();
+        try {
+            enforce_primary_account_limit($pdo);
+            assert_true($pdo->inTransaction());
+        } finally {
+            $pdo->rollBack();
+        }
+    });
+});
