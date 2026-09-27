@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: test-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_mysql
+          coverage: none
+      - name: PHP syntax
+        run: find php tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Unit tests
+        run: php tests/run.php
+      - name: Integration tests
+        env:
+          TEST_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
+          TEST_DB_USER: root
+          TEST_DB_PASSWORD: test-root-password
+        run: php tests/run.php tests/integration/migration_test.php tests/integration/invitation_test.php tests/integration/csrf_test.php tests/integration/tenant_isolation_test.php tests/integration/admin_settings_test.php
+      - name: Packaging and release checks
+        run: |
+          sh tests/docker/compose_test.sh
+          sh tests/release/release_test.sh
+          sh tests/release/maintenance_scripts_test.sh
+      - name: Compose validation
+        env:
+          DB_PASSWORD: test-database-password
+          MYSQL_ROOT_PASSWORD: test-root-password
+          BOOTSTRAP_ADMIN_PASSWORD: TestAdminPassword12!
+        run: docker compose config >/dev/null
+      - name: Docker build
+        run: docker build --tag inventory-app:test .
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

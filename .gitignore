@@ -5,6 +5,9 @@
 !.env.example
 *.sql
 *.sql.gz
+*.sqlite
+*.db
 *.log
+backups/
 coverage/
 vendor/
