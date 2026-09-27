@@ -21,7 +21,8 @@ if ($registrationClosed) {
             client_ip($_SERVER, app_config_list('TRUSTED_PROXIES'))
         );
         $success = '注册成功！您的账号和密保信息已安全保存。';
-    } catch (RuntimeException $exception) {
+    } catch (HttpException $exception) {
+        http_response_code($exception->statusCode());
         $error = $exception->getMessage();
     } catch (Throwable $exception) {
         $requestId = safe_log($exception);

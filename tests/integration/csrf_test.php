@@ -83,5 +83,7 @@ test('password recovery records both source network and target account', functio
         clear_recovery_account_failures($pdo, $keys);
         assert_same(null, auth_lock_until($pdo, 'username', $keys['username']));
         assert_same(null, auth_lock_until($pdo, 'ip', $keys['ip']));
+        $statement->execute([$keys['ip']]);
+        assert_same(5, (int) $statement->fetchColumn());
     });
 });

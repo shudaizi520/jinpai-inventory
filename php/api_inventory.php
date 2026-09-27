@@ -349,6 +349,18 @@ try {
             $finalParams = array_merge($params, $ids, [$owner_id]);
             $stmt = $pdo->prepare($sql);
             $stmt->execute($finalParams);
+
+            if (isset($_POST['update_receiver']) || isset($_POST['update_collected_amount'])) {
+                $validateSold = $pdo->prepare("SELECT status, receiver, collected_amount FROM inventory_items WHERE id IN ($inQuery) AND user_id = ? AND status IN ('SOLD', 'PARTS_SOLD')");
+                $validateSold->execute(array_merge($ids, [$owner_id]));
+                foreach ($validateSold->fetchAll(PDO::FETCH_ASSOC) as $soldItem) {
+                    require_sold_record_details(
+                        (string) $soldItem['status'],
+                        (string) $soldItem['receiver'],
+                        (float) $soldItem['collected_amount']
+                    );
+                }
+            }
         }
         $pdo->commit();
         } catch (Throwable $error) {
@@ -415,6 +427,7 @@ try {
             if ($dispatch_qty <= 0 || $dispatch_qty > $item['quantity']) throw new HttpException("出库数量输入不合法 (必须大于0且不能超过实际库存)");
 
             $total_collected = bounded_money($unit_collected * $dispatch_qty, '总收款金额');
+            require_sold_record_details('PARTS_SOLD', $receiver, $total_collected);
             $unit_cost = $item['quantity'] > 0 ? ($item['cost_rmb'] / $item['quantity']) : 0;
             $unit_freight = $item['quantity'] > 0 ? ($item['freight'] / $item['quantity']) : 0;
 

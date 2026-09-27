@@ -120,6 +120,9 @@ function endpoint_database(callable $test): void
     $insertItem = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, quantity, status, cost_rmb, freight, collected_amount) VALUES (?, ?, ?, ?, ?, ?, ?)");
     $insertItem->execute([10, 'OWNER-A-ITEM', 1, 'US', 10, 1, 100]);
     $insertItem->execute([10, 'OWNER-A-PART', 3, 'PARTS', 300, 30, 0]);
+    $insertItem->execute([10, 'OWNER-A-SOLD', 1, 'SOLD', 400, 40, 500]);
+    $ownerSoldId = (int) $pdo->lastInsertId();
+    $pdo->prepare('UPDATE inventory_items SET receiver = ? WHERE id = ?')->execute(['existing-customer', $ownerSoldId]);
     $insertItem->execute([20, 'OWNER-B-ITEM', 1, 'US', 900, 90, 1200]);
     $foreignId = (int) $pdo->lastInsertId();
     $insertItem->execute([20, 'OWNER-B-PART', 3, 'PARTS', 300, 30, 0]);
@@ -213,6 +216,25 @@ test('http inventory and employee mutations cannot cross tenant boundaries', fun
             assert_same('error', $payload['status'], 'Cross-tenant action unexpectedly succeeded: ' . $mutation['action']);
         }
 
+        $soldId = (int) $pdo->query("SELECT id FROM inventory_items WHERE user_id = 10 AND service_no = 'OWNER-A-SOLD'")->fetchColumn();
+        $partId = (int) $pdo->query("SELECT id FROM inventory_items WHERE user_id = 10 AND service_no = 'OWNER-A-PART'")->fetchColumn();
+        $invalidSoldEdits = [
+            ['action' => 'batch_edit', 'ids' => (string) $soldId, 'update_receiver' => '1', 'receiver' => ''],
+            ['action' => 'batch_edit', 'ids' => (string) $soldId, 'update_collected_amount' => '1', 'unit_collected' => 0],
+        ];
+        foreach ($invalidSoldEdits as $mutation) {
+            $payload = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', $mutation, $cookies, $csrf));
+            assert_same('error', $payload['status'], 'Invalid sold-record edit unexpectedly succeeded');
+        }
+        $zeroValueDispatch = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', [
+            'action' => 'dispatch_part',
+            'id' => $partId,
+            'dispatch_qty' => 1,
+            'receiver' => 'customer',
+            'unit_collected' => 0,
+        ], $cookies, $csrf));
+        assert_same('error', $zeroValueDispatch['status']);
+
         $importRows = json_encode([[
             '服务编号' => 'OWNER-B-ITEM',
             '数量' => 1,
@@ -234,6 +256,10 @@ test('http inventory and employee mutations cannot cross tenant boundaries', fun
         assert_same('900.00', $foreign['cost_rmb']);
         assert_same('90.00', $foreign['freight']);
         assert_same('1200.00', $foreign['collected_amount']);
+        $sold = $pdo->query("SELECT receiver, collected_amount FROM inventory_items WHERE id = {$soldId}")->fetch();
+        assert_same('existing-customer', $sold['receiver']);
+        assert_same('500.00', $sold['collected_amount']);
+        assert_same(3, (int) $pdo->query("SELECT quantity FROM inventory_items WHERE id = {$partId}")->fetchColumn());
         assert_same('endpoint-worker-b', $pdo->query('SELECT username FROM users WHERE id = 21')->fetchColumn());
         assert_same(1, (int) $pdo->query("SELECT COUNT(*) FROM inventory_items WHERE user_id = 10 AND service_no = 'OWNER-B-ITEM'")->fetchColumn());
     });

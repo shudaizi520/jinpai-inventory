@@ -27,3 +27,11 @@ test('authentication pages do not load a remote background image', function (): 
     assert_false(str_contains((string) $login, 'images.unsplash.com'));
     assert_false(str_contains((string) $register, 'images.unsplash.com'));
 });
+
+test('registration page only renders explicitly user safe exceptions', function (): void {
+    $register = file_get_contents(dirname(__DIR__, 2) . '/php/register.php');
+    assert_true(is_string($register));
+    assert_true(str_contains($register, 'catch (HttpException $exception)'));
+    assert_false(str_contains($register, 'catch (RuntimeException $exception)'));
+    assert_true(str_contains($register, 'safe_log($exception)'));
+});

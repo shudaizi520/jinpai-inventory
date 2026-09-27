@@ -136,11 +136,26 @@ test('primary registration validates lengths passwords and open-mode rate limits
 test('primary account limit is checked while registration configuration is locked', function (): void {
     invitation_test_database(function (PDO $pdo): void {
         assert_throws(fn () => enforce_primary_account_limit($pdo), LogicException::class);
+        $database = (string) $pdo->query('SELECT DATABASE()')->fetchColumn();
+        $dsn = (string) getenv('TEST_DB_DSN');
+        $databaseDsn = preg_replace('/;dbname=[^;]*/', '', $dsn) . ';dbname=' . $database;
+        $second = new PDO($databaseDsn, getenv('TEST_DB_USER') ?: 'root', getenv('TEST_DB_PASSWORD') ?: '', [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+        $second->exec('SET SESSION innodb_lock_wait_timeout = 1');
+
         $pdo->beginTransaction();
         try {
             enforce_primary_account_limit($pdo);
             assert_true($pdo->inTransaction());
+            $second->beginTransaction();
+            assert_throws(fn () => enforce_primary_account_limit($second), PDOException::class);
         } finally {
+            if ($second->inTransaction()) {
+                $second->rollBack();
+            }
             $pdo->rollBack();
         }
     });
