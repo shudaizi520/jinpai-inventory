@@ -544,6 +544,9 @@ if ($is_initial_admin) {
                     <button onclick="switchSetTab('tabs')" id="setTab_tabs" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">🖥️ 仓库配置</button>
                     <button onclick="switchSetTab('sub')" id="setTab_sub" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">👥 员工管理</button>
                     <?php endif; ?>
+                    <?php if($is_initial_admin): ?>
+                    <button onclick="switchSetTab('registration')" id="setTab_registration" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">🌐 注册管理</button>
+                    <?php endif; ?>
                 </div>
                 
                 <div class="flex-1 p-6 overflow-y-auto">
@@ -690,6 +693,43 @@ if ($is_initial_admin) {
                             </div>
                         </div>
                     </div>
+                    <?php if($is_initial_admin): ?>
+                    <div id="setPanel_registration" class="hidden space-y-6">
+                        <div class="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
+                            <h4 class="font-black text-[15px] text-slate-800 mb-4 pb-3 border-b border-slate-100">🌐 新主账号注册方式</h4>
+                            <div class="flex gap-3">
+                                <select id="registrationMode" class="flex-1 border border-slate-200 bg-slate-50 rounded-lg px-4 py-2.5 text-sm font-bold text-slate-700 outline-none focus:ring-1 focus:ring-slate-400">
+                                    <option value="closed">关闭注册（仅管理员添加）</option>
+                                    <option value="invite">邀请码注册（推荐）</option>
+                                    <option value="open">开放注册</option>
+                                </select>
+                                <button onclick="saveRegistrationMode()" class="bg-slate-800 hover:bg-slate-700 text-white font-bold px-5 py-2.5 rounded-lg text-sm">保存模式</button>
+                            </div>
+                            <p class="mt-3 text-xs text-slate-500 leading-relaxed">此设置只控制新的独立主账号。老板添加的员工账号不受影响，各主账号库存仍完全分开。</p>
+                        </div>
+                        <div class="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
+                            <div class="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+                                <h4 class="font-black text-[15px] text-slate-800">🎟️ 邀请码</h4>
+                                <div class="flex gap-2">
+                                    <select id="inviteExpiresDays" class="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                                        <option value="1">1 天有效</option>
+                                        <option value="7" selected>7 天有效</option>
+                                        <option value="30">30 天有效</option>
+                                        <option value="90">90 天有效</option>
+                                    </select>
+                                    <button onclick="createRegistrationInvite()" class="bg-[#8B0000] hover:bg-[#600000] text-white font-bold px-4 py-2 rounded-lg text-sm">生成邀请码</button>
+                                </div>
+                            </div>
+                            <div id="newInviteCode" class="hidden mb-4 p-4 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono text-sm break-all"></div>
+                            <div class="border border-slate-200 rounded-lg overflow-hidden">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-slate-50 text-slate-500 font-bold"><tr><th class="p-3">编号</th><th class="p-3">状态</th><th class="p-3">到期时间</th><th class="p-3 text-center">操作</th></tr></thead>
+                                    <tbody id="registrationInviteTable"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -1244,7 +1284,7 @@ if ($is_initial_admin) {
                 renderSummaryPanels(); 
                 renderTable(); 
             } else { 
-                tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">${j.message}</td></tr>`; 
+                tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">${escapeHTML(j.message || '请求失败')}</td></tr>`;
             }
         } catch (e) { 
             tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">网络异常或环境配置错误，请求未能成功</td></tr>`; 
@@ -1866,8 +1906,89 @@ if ($is_initial_admin) {
         document.getElementById('setPanel_pwd').classList.add('hidden'); 
         if (document.getElementById('setPanel_tabs')) document.getElementById('setPanel_tabs').classList.add('hidden'); 
         if (document.getElementById('setPanel_sub')) document.getElementById('setPanel_sub').classList.add('hidden'); 
+        if (document.getElementById('setPanel_registration')) document.getElementById('setPanel_registration').classList.add('hidden');
         document.getElementById('setPanel_' + t).classList.remove('hidden'); 
         if (t === 'sub') loadSubAccounts(); 
+        if (t === 'registration') loadRegistrationSettings();
+    }
+
+    async function loadRegistrationSettings() {
+        const table = document.getElementById('registrationInviteTable');
+        if (!table) return;
+        const response = await apiFetch(INVENTORY_API_URL + '?action=get_registration_settings');
+        const result = await response.json();
+        if (result.status !== 'success') return alert(result.message || '无法读取注册设置');
+        document.getElementById('registrationMode').value = result.data.mode;
+        table.replaceChildren();
+        if (!result.data.invitations.length) {
+            const row = document.createElement('tr');
+            const cell = document.createElement('td');
+            cell.colSpan = 4;
+            cell.className = 'p-5 text-center text-slate-400';
+            cell.textContent = '暂时没有邀请码';
+            row.appendChild(cell);
+            table.appendChild(row);
+            return;
+        }
+        const statusLabels = {available: '可使用', used: '已使用', revoked: '已撤销', expired: '已过期'};
+        result.data.invitations.forEach(invite => {
+            const row = document.createElement('tr');
+            row.className = 'border-t border-slate-100';
+            const values = [String(invite.id), statusLabels[invite.status] || '未知', invite.expires_at || '永不过期'];
+            values.forEach(value => {
+                const cell = document.createElement('td');
+                cell.className = 'p-3 text-slate-600';
+                cell.textContent = value;
+                row.appendChild(cell);
+            });
+            const actionCell = document.createElement('td');
+            actionCell.className = 'p-3 text-center';
+            if (invite.status === 'available') {
+                const button = document.createElement('button');
+                button.className = 'text-red-600 font-bold hover:underline';
+                button.textContent = '撤销';
+                button.addEventListener('click', () => revokeRegistrationInvite(Number(invite.id)));
+                actionCell.appendChild(button);
+            } else {
+                actionCell.textContent = '-';
+            }
+            row.appendChild(actionCell);
+            table.appendChild(row);
+        });
+    }
+
+    async function saveRegistrationMode() {
+        const body = new FormData();
+        body.append('action', 'set_registration_mode');
+        body.append('mode', document.getElementById('registrationMode').value);
+        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body});
+        const result = await response.json();
+        if (result.status === 'success') alert('注册模式已保存并立即生效');
+        else alert(result.message || '保存失败');
+    }
+
+    async function createRegistrationInvite() {
+        const body = new FormData();
+        body.append('action', 'create_invitation');
+        body.append('expires_days', document.getElementById('inviteExpiresDays').value);
+        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body});
+        const result = await response.json();
+        if (result.status !== 'success') return alert(result.message || '生成失败');
+        const codeBox = document.getElementById('newInviteCode');
+        codeBox.textContent = '请立即复制（系统不会再次显示）：' + result.data.code;
+        codeBox.classList.remove('hidden');
+        await loadRegistrationSettings();
+    }
+
+    async function revokeRegistrationInvite(inviteId) {
+        if (!(await sysConfirm('确定撤销这个尚未使用的邀请码吗？'))) return;
+        const body = new FormData();
+        body.append('action', 'revoke_invitation');
+        body.append('invite_id', String(inviteId));
+        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body});
+        const result = await response.json();
+        if (result.status === 'success') await loadRegistrationSettings();
+        else alert(result.message || '撤销失败');
     }
     
     async function saveSecQuestions() { 
@@ -2129,7 +2250,7 @@ if ($is_initial_admin) {
             j.data.forEach(u => { 
                 let histLabel = u.perm_history_view == 999 ? '全部' : (u.perm_history_view == 6 ? '半年' : '3个月'); 
                 h += `<tr class="hover:bg-slate-50 transition-all">
-                        <td class="p-3 border-b font-bold text-slate-700">${u.username}</td>
+                        <td class="p-3 border-b font-bold text-slate-700">${escapeHTML(u.username)}</td>
                         <td class="p-3 border-b text-center">${u.perm_finance == 1 ? '✅' : '❌'}</td>
                         <td class="p-3 border-b text-center text-sm text-slate-500">${histLabel}</td>
                         <td class="p-3 border-b text-center">
@@ -2439,11 +2560,14 @@ if ($is_initial_admin) {
         const t = document.getElementById('sysToast');
         if(type === 'success') {
             t.className = 'fixed top-5 left-1/2 -translate-x-1/2 z-[9999] transition-all duration-300 flex items-center gap-2 px-5 py-3 rounded-full shadow-lg font-bold text-sm tracking-wide bg-emerald-50 text-emerald-700 border border-emerald-200 translate-y-0 opacity-100';
-            t.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> ${msg}`;
+            t.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
         } else {
             t.className = 'fixed top-5 left-1/2 -translate-x-1/2 z-[9999] transition-all duration-300 flex items-center gap-2 px-5 py-3 rounded-full shadow-lg font-bold text-sm tracking-wide bg-red-50 text-red-600 border border-red-200 translate-y-0 opacity-100';
-            t.innerHTML = `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> ${msg}`;
+            t.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>';
         }
+        const message = document.createElement('span');
+        message.textContent = String(msg);
+        t.appendChild(message);
         setTimeout(() => { t.classList.add('opacity-0', '-translate-y-full', 'pointer-events-none'); t.classList.remove('translate-y-0', 'opacity-100'); }, 3000);
     };
 

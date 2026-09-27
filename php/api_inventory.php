@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/authorization.php';
+require_once __DIR__ . '/lib/registration.php';
 
 header('Content-Type: application/json');
 
@@ -94,7 +95,30 @@ if ($action === 'check_update') {
 // ---------------------------------
 
 try {
-    if ($action === 'list') {
+    if ($action === 'get_registration_settings') {
+        echo json_encode(['status' => 'success', 'data' => admin_registration_snapshot($pdo, (int) $user_id)]);
+    }
+    elseif ($action === 'set_registration_mode') {
+        set_registration_mode($pdo, (int) $user_id, (string) ($_POST['mode'] ?? ''));
+        echo json_encode(['status' => 'success']);
+    }
+    elseif ($action === 'create_invitation') {
+        $expiresDays = filter_var($_POST['expires_days'] ?? 7, FILTER_VALIDATE_INT);
+        if ($expiresDays === false || $expiresDays < 1 || $expiresDays > 365) {
+            throw new HttpException('邀请码有效期必须在 1 到 365 天之间。', 400);
+        }
+        $invite = create_invitation($pdo, (int) $user_id, new DateTimeImmutable("+{$expiresDays} days"));
+        echo json_encode(['status' => 'success', 'data' => $invite]);
+    }
+    elseif ($action === 'revoke_invitation') {
+        $inviteId = filter_var($_POST['invite_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($inviteId === false || $inviteId < 1) {
+            throw new HttpException('邀请码编号无效。', 400);
+        }
+        revoke_invitation_as_admin($pdo, (int) $user_id, (int) $inviteId);
+        echo json_encode(['status' => 'success']);
+    }
+    elseif ($action === 'list') {
         $status = (string) ($_GET['status'] ?? 'US');
         require_status_access($status, $currUser, $ownerData);
 
@@ -417,9 +441,9 @@ try {
                 $stmt2->execute([$owner_id, $item['service_no'], $item['batch_no'], $dispatch_qty, $item['config_desc'], $dispatch_cost, $dispatch_freight, $receiver, $item['remarks'], $total_collected]);
             }
             $pdo->commit();
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $pdo->rollBack();
-            throw new Exception($e->getMessage()); 
+            throw $e;
         }
         echo json_encode(['status' => 'success']);
     }
@@ -514,11 +538,11 @@ try {
             $pdo->commit();
             echo json_encode(['status' => 'success']);
             
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            throw new Exception($e->getMessage());
+            throw $e;
         } finally {
             // 🛡️ 无论保存成功还是发生报错，务必释放应用锁，防止锁死后续正常操作
             $pdo->prepare("SELECT RELEASE_LOCK(?)")->execute([$lockName]);
@@ -704,9 +728,9 @@ try {
             }
             $pdo->commit();
             echo json_encode(['status' => 'success', 'message' => "成功导入并更新 {$success} 条数据！"]);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $pdo->rollBack();
-            throw new Exception("导入过程出错已全部回滚撤销： " . $e->getMessage());
+            throw $e;
         }
     } 
     elseif ($action === 'verify_lock') {
@@ -909,9 +933,9 @@ try {
             $pdo->commit();
             session_destroy();
             echo json_encode(['status' => 'success']);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $pdo->rollBack();
-            throw new Exception("注销过程异常：" . $e->getMessage());
+            throw $e;
         }
     }
     elseif ($action === 'list_sub_accounts') {
@@ -1027,8 +1051,19 @@ elseif ($action === 'verify_login') {
         echo json_encode(['status' => 'success']);
     }
     else { echo json_encode(['status' => 'error', 'message' => '无效请求']); }
+} catch (HttpException $e) {
+    http_response_code($e->statusCode());
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+} catch (PDOException $e) {
+    $requestId = safe_log($e);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => '数据库操作暂时无法完成，请稍后重试。请求编号：' . $requestId]);
 } catch (Exception $e) {
-    $msg = $e->getMessage();
-    echo json_encode(['status' => 'error', 'message' => $msg]);
+    http_response_code(400);
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+} catch (Throwable $e) {
+    $requestId = safe_log($e);
+    http_response_code(500);
+    echo json_encode(['status' => 'error', 'message' => '请求暂时无法完成，请稍后重试。请求编号：' . $requestId]);
 }
 ?>

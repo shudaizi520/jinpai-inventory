@@ -144,6 +144,15 @@ function list_invitations(PDO $pdo): array
     return $rows;
 }
 
+function admin_registration_snapshot(PDO $pdo, int $actorId): array
+{
+    require_system_admin($pdo, $actorId);
+    return [
+        'mode' => registration_mode($pdo),
+        'invitations' => list_invitations($pdo),
+    ];
+}
+
 function revoke_invitation(PDO $pdo, int $inviteId): void
 {
     if ($inviteId < 1) {
@@ -154,6 +163,12 @@ function revoke_invitation(PDO $pdo, int $inviteId): void
     if ($statement->rowCount() !== 1) {
         throw new RuntimeException('邀请码不存在、已使用或已撤销。');
     }
+}
+
+function revoke_invitation_as_admin(PDO $pdo, int $actorId, int $inviteId): void
+{
+    require_system_admin($pdo, $actorId);
+    revoke_invitation($pdo, $inviteId);
 }
 
 function register_primary_account(PDO $pdo, array $input, string $ip): int

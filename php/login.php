@@ -165,10 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['api_action'])) {
     </head>
 <body class="flex items-center justify-center h-screen relative overflow-hidden bg-slate-100 font-sans">
 
-    <div class="absolute inset-0 z-0">
-        <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80" class="w-full h-full object-cover filter blur-[6px] scale-105 opacity-50" alt="background">
-        <div class="absolute inset-0 bg-slate-200/30 mix-blend-multiply"></div>
-    </div>
+    <div class="absolute inset-0 z-0 bg-gradient-to-br from-slate-200 via-slate-100 to-red-100" aria-hidden="true"></div>
 
     <div id="loginPanel" class="bg-white px-10 py-12 rounded-[28px] shadow-2xl w-[420px] z-10 transition-opacity duration-300 relative">
         <div class="text-center mb-10">

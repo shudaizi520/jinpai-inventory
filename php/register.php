@@ -47,10 +47,7 @@ if ($registrationClosed) {
 </head>
 <body class="flex flex-col items-center justify-center min-h-screen relative overflow-x-hidden bg-slate-100 font-sans py-10">
 
-    <div class="fixed inset-0 z-0">
-        <img src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&q=80" class="w-full h-full object-cover filter blur-[6px] scale-105 opacity-50" alt="background">
-        <div class="absolute inset-0 bg-slate-200/30 mix-blend-multiply"></div>
-    </div>
+    <div class="fixed inset-0 z-0 bg-gradient-to-br from-slate-200 via-slate-100 to-red-100" aria-hidden="true"></div>
 
     <div class="bg-white px-10 py-10 rounded-[28px] shadow-2xl w-[480px] z-10 relative">
         <div class="text-center mb-8">
