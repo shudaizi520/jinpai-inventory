@@ -99,8 +99,8 @@ function endpoint_database(callable $test): void
     $databaseUser = 'endpoint_' . substr(hash('sha256', $suffix), 0, 12);
     $databasePassword = 'EndpointDatabase12!';
     $admin->exec("CREATE DATABASE `{$database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-    $admin->exec("CREATE USER '{$databaseUser}'@'127.0.0.1' IDENTIFIED BY '{$databasePassword}'");
-    $admin->exec("GRANT ALL PRIVILEGES ON `{$database}`.* TO '{$databaseUser}'@'127.0.0.1'");
+    $admin->exec("CREATE USER '{$databaseUser}'@'%' IDENTIFIED BY '{$databasePassword}'");
+    $admin->exec("GRANT ALL PRIVILEGES ON `{$database}`.* TO '{$databaseUser}'@'%'");
 
     $databaseDsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
     $pdo = new PDO($databaseDsn, $databaseUser, $databasePassword, [
@@ -184,7 +184,7 @@ function endpoint_database(callable $test): void
         }
         rmdir($sessionDirectory);
         $admin->exec("DROP DATABASE IF EXISTS `{$database}`");
-        $admin->exec("DROP USER IF EXISTS '{$databaseUser}'@'127.0.0.1'");
+        $admin->exec("DROP USER IF EXISTS '{$databaseUser}'@'%'");
     }
 }
 
