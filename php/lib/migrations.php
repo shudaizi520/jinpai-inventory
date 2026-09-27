@@ -17,6 +17,13 @@ function run_migrations(PDO $pdo): void
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 
     $baseMigrationExisted = migration_was_applied($pdo, INVENTORY_BASE_SCHEMA_VERSION);
+    $initialSetupMigrationExisted = migration_was_applied($pdo, INVENTORY_SCHEMA_VERSION);
+    if (!$initialSetupMigrationExisted) {
+        create_application_tables($pdo);
+        $isBrandNewInstallation = !$usersTableExisted && !$baseMigrationExisted;
+        seed_initial_admin_setup_state($pdo, $isBrandNewInstallation);
+    }
+
     if (!$baseMigrationExisted) {
         create_core_tables($pdo);
         migrate_users_table($pdo);
@@ -33,9 +40,7 @@ function run_migrations(PDO $pdo): void
         record_migration($pdo, INVENTORY_RELEASE_HARDENING_VERSION);
     }
 
-    if (!migration_was_applied($pdo, INVENTORY_SCHEMA_VERSION)) {
-        $isBrandNewInstallation = !$usersTableExisted && !$baseMigrationExisted;
-        seed_initial_admin_setup_state($pdo, $isBrandNewInstallation);
+    if (!$initialSetupMigrationExisted) {
         record_migration($pdo, INVENTORY_SCHEMA_VERSION);
     }
 }
@@ -263,8 +268,7 @@ function seed_registration_mode(PDO $pdo): void
 
 function seed_initial_admin_setup_state(PDO $pdo, bool $isBrandNewInstallation): void
 {
-    $hasUsers = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0;
-    $state = $isBrandNewInstallation && !$hasUsers ? 'pending' : 'complete';
+    $state = $isBrandNewInstallation ? 'pending' : 'complete';
     $statement = $pdo->prepare('INSERT IGNORE INTO app_settings (setting_key, setting_value) VALUES (?, ?)');
     $statement->execute(['initial_admin_setup', $state]);
 }

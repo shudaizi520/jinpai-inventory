@@ -124,6 +124,21 @@ test('legacy database with an empty users table does not reopen administrator se
     });
 });
 
+test('interrupted fresh migration retains pending administrator setup on retry', function (): void {
+    migration_test_database(function (PDO $pdo): void {
+        create_application_tables($pdo);
+        seed_initial_admin_setup_state($pdo, true);
+        assert_same('pending', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='initial_admin_setup'")->fetchColumn());
+
+        create_core_tables($pdo);
+        run_migrations($pdo);
+
+        assert_same(0, (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn());
+        assert_same('pending', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='initial_admin_setup'")->fetchColumn());
+        assert_same(3, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
+    });
+});
+
 test('administrator bootstrap runs once and rejects weak passwords', function (): void {
     migration_test_database(function (PDO $pdo): void {
         run_migrations($pdo);
