@@ -110,7 +110,7 @@ Tests are written before implementation and must cover:
 - fresh and legacy migrations, invalid ownership rejection, foreign-key enforcement, cascades, and idempotence;
 - current CSRF, finance masking, warehouse locks, registration modes, Docker build, packaging, and secret scanning regressions.
 
-The release gate is the complete local suite plus GitHub CI. NAS deployment occurs only after CI succeeds for the exact pushed commit. Post-deployment checks cover container health, login redirect, inventory read/write, employee isolation, audit visibility, session revocation, and recovery using disposable test data in the owner's tenant. Disposable smoke-test data is removed through the application so its audit trail remains truthful.
+The release gate is the complete local suite plus GitHub CI. NAS deployment occurs only after CI succeeds for the exact pushed commit. Authenticated inventory, employee isolation, audit, session-revocation, and recovery checks run against disposable integration databases before deployment. Post-deployment checks cover container health, login redirect, schema state, recent logs, and a synthetic database transaction that is fully rolled back. The deployment process never requests or uses the owner's password and does not add test records to a real tenant.
 
 ## Rollback
 
