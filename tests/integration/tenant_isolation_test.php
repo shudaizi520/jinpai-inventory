@@ -40,6 +40,7 @@ function tenant_test_database(callable $test): void
 
 test('tenant item lookup rejects foreign and partially foreign batches', function (): void {
     tenant_test_database(function (PDO $pdo): void {
+        $pdo->exec("INSERT INTO users (id, username, password, parent_id) VALUES (10, 'tenant-a', 'test', 0), (20, 'tenant-b', 'test', 0)");
         $insert = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, quantity, status) VALUES (?, ?, 1, 'US')");
         $insert->execute([10, 'TENANT-A']);
         $ownId = (int) $pdo->lastInsertId();
@@ -55,6 +56,7 @@ test('tenant item lookup rejects foreign and partially foreign batches', functio
 
 test('tenant item lookup can lock a verified owner row inside a transaction', function (): void {
     tenant_test_database(function (PDO $pdo): void {
+        $pdo->exec("INSERT INTO users (id, username, password, parent_id) VALUES (10, 'tenant-a', 'test', 0)");
         $pdo->exec("INSERT INTO inventory_items (user_id, service_no, quantity, status) VALUES (10, 'LOCK-ME', 1, 'PARTS')");
         $id = (int) $pdo->lastInsertId();
         $pdo->beginTransaction();

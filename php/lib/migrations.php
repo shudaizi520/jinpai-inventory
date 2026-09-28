@@ -7,6 +7,7 @@ require_once __DIR__ . '/security.php';
 const INVENTORY_BASE_SCHEMA_VERSION = '202609270001_secure_self_hosted_base';
 const INVENTORY_RELEASE_HARDENING_VERSION = '202609270002_release_hardening';
 const INVENTORY_SCHEMA_VERSION = '202609270003_initial_admin_setup_state';
+const INVENTORY_ACCOUNT_INTEGRITY_VERSION = '202609280001_account_integrity';
 
 function run_migrations(PDO $pdo): void
 {
@@ -42,6 +43,11 @@ function run_migrations(PDO $pdo): void
 
     if (!$initialSetupMigrationExisted) {
         record_migration($pdo, INVENTORY_SCHEMA_VERSION);
+    }
+
+    if (!migration_was_applied($pdo, INVENTORY_ACCOUNT_INTEGRITY_VERSION)) {
+        migrate_account_integrity($pdo);
+        record_migration($pdo, INVENTORY_ACCOUNT_INTEGRITY_VERSION);
     }
 }
 
@@ -293,6 +299,158 @@ function apply_release_hardening_migration(PDO $pdo): void
     if (isset($present['cost_us'], $present['cost_rmb'])) {
         $pdo->exec('UPDATE inventory_items SET cost_rmb = cost_us WHERE (cost_rmb IS NULL OR cost_rmb = 0) AND cost_us IS NOT NULL AND cost_us <> 0');
     }
+}
+
+function validate_account_integrity_ownership(PDO $pdo): void
+{
+    $invalid = [
+        'employees with a missing primary account' => (int) $pdo->query("SELECT COUNT(*)
+            FROM users employee
+            LEFT JOIN users owner ON owner.id = employee.parent_id
+            WHERE employee.parent_id <> 0 AND owner.id IS NULL")->fetchColumn(),
+        'employees whose parent is not a primary account' => (int) $pdo->query("SELECT COUNT(*)
+            FROM users employee
+            JOIN users owner ON owner.id = employee.parent_id
+            WHERE employee.parent_id <> 0 AND owner.parent_id <> 0")->fetchColumn(),
+        'inventory rows with a missing owner' => (int) $pdo->query("SELECT COUNT(*)
+            FROM inventory_items item
+            LEFT JOIN users owner ON owner.id = item.user_id
+            WHERE owner.id IS NULL")->fetchColumn(),
+        'inventory rows owned by an employee' => (int) $pdo->query("SELECT COUNT(*)
+            FROM inventory_items item
+            JOIN users owner ON owner.id = item.user_id
+            WHERE owner.parent_id <> 0")->fetchColumn(),
+    ];
+
+    $problems = [];
+    foreach ($invalid as $label => $count) {
+        if ($count > 0) {
+            $problems[] = "{$label}: {$count}";
+        }
+    }
+    if ($problems !== []) {
+        throw new RuntimeException('Account integrity migration stopped; repair ownership before retrying: ' . implode('; ', $problems));
+    }
+}
+
+function database_index_exists(PDO $pdo, string $table, string $index): bool
+{
+    $statement = $pdo->prepare('SELECT COUNT(*) FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?');
+    $statement->execute([$table, $index]);
+    return (int) $statement->fetchColumn() > 0;
+}
+
+function database_constraint_exists(PDO $pdo, string $constraint): bool
+{
+    $statement = $pdo->prepare('SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = DATABASE() AND CONSTRAINT_NAME = ?');
+    $statement->execute([$constraint]);
+    return (int) $statement->fetchColumn() > 0;
+}
+
+function create_account_integrity_tables(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS tenant_inventory_state (
+        tenant_id INT NOT NULL PRIMARY KEY,
+        revision BIGINT UNSIGNED NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS audit_events (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT NOT NULL,
+        actor_user_id INT NULL,
+        actor_username VARCHAR(50) NOT NULL,
+        action_type VARCHAR(64) NOT NULL,
+        entity_type VARCHAR(32) NOT NULL,
+        entity_id BIGINT NULL,
+        service_no VARCHAR(100) NULL,
+        before_json JSON NULL,
+        after_json JSON NULL,
+        source_event_id BIGINT UNSIGNED NULL,
+        created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+        UNIQUE KEY uq_audit_restore_source (source_event_id),
+        INDEX idx_audit_tenant_created (tenant_id, created_at, id),
+        INDEX idx_audit_tenant_entity (tenant_id, entity_type, entity_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+}
+
+function ensure_account_integrity_constraints(PDO $pdo): void
+{
+    if (!database_index_exists($pdo, 'users', 'idx_users_parent_id')) {
+        $pdo->exec('CREATE INDEX idx_users_parent_id ON users (parent_id)');
+    }
+
+    if (!database_constraint_exists($pdo, 'fk_inventory_owner')) {
+        $pdo->exec('ALTER TABLE inventory_items ADD CONSTRAINT fk_inventory_owner
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE');
+    }
+    if (!database_constraint_exists($pdo, 'fk_tenant_state_owner')) {
+        $pdo->exec('ALTER TABLE tenant_inventory_state ADD CONSTRAINT fk_tenant_state_owner
+            FOREIGN KEY (tenant_id) REFERENCES users (id) ON DELETE CASCADE');
+    }
+    if (!database_constraint_exists($pdo, 'fk_audit_tenant')) {
+        $pdo->exec('ALTER TABLE audit_events ADD CONSTRAINT fk_audit_tenant
+            FOREIGN KEY (tenant_id) REFERENCES users (id) ON DELETE CASCADE');
+    }
+}
+
+function create_account_integrity_triggers(PDO $pdo): void
+{
+    $triggers = [
+        'trg_users_parent_insert' => "CREATE TRIGGER trg_users_parent_insert BEFORE INSERT ON users FOR EACH ROW
+            BEGIN
+                IF NEW.parent_id <> 0 AND (SELECT COUNT(*) FROM users owner WHERE owner.id = NEW.parent_id AND owner.parent_id = 0) <> 1 THEN
+                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'employee parent must be an existing primary account';
+                END IF;
+            END",
+        'trg_users_parent_update' => "CREATE TRIGGER trg_users_parent_update BEFORE UPDATE ON users FOR EACH ROW
+            BEGIN
+                IF NEW.parent_id <> 0 AND (SELECT COUNT(*) FROM users owner WHERE owner.id = NEW.parent_id AND owner.parent_id = 0) <> 1 THEN
+                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'employee parent must be an existing primary account';
+                END IF;
+            END",
+        'trg_users_primary_delete' => "CREATE TRIGGER trg_users_primary_delete BEFORE DELETE ON users FOR EACH ROW
+            BEGIN
+                IF OLD.parent_id = 0 AND EXISTS (SELECT 1 FROM users employee WHERE employee.parent_id = OLD.id) THEN
+                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'delete employee accounts before deleting their primary account';
+                END IF;
+            END",
+        'trg_inventory_owner_insert' => "CREATE TRIGGER trg_inventory_owner_insert BEFORE INSERT ON inventory_items FOR EACH ROW
+            BEGIN
+                IF (SELECT COUNT(*) FROM users owner WHERE owner.id = NEW.user_id AND owner.parent_id = 0) <> 1 THEN
+                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory owner must be an existing primary account';
+                END IF;
+            END",
+        'trg_inventory_owner_update' => "CREATE TRIGGER trg_inventory_owner_update BEFORE UPDATE ON inventory_items FOR EACH ROW
+            BEGIN
+                IF (SELECT COUNT(*) FROM users owner WHERE owner.id = NEW.user_id AND owner.parent_id = 0) <> 1 THEN
+                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'inventory owner must be an existing primary account';
+                END IF;
+            END",
+    ];
+
+    foreach ($triggers as $name => $sql) {
+        $pdo->exec('DROP TRIGGER IF EXISTS `' . $name . '`');
+        $pdo->exec($sql);
+    }
+}
+
+function migrate_account_integrity(PDO $pdo): void
+{
+    validate_account_integrity_ownership($pdo);
+    add_missing_columns($pdo, 'users', [
+        'session_version' => 'BIGINT UNSIGNED NOT NULL DEFAULT 1',
+    ]);
+    add_missing_columns($pdo, 'inventory_items', [
+        'row_version' => 'BIGINT UNSIGNED NOT NULL DEFAULT 1',
+    ]);
+    create_account_integrity_tables($pdo);
+    $pdo->exec("INSERT IGNORE INTO tenant_inventory_state (tenant_id, revision)
+        SELECT id, 0 FROM users WHERE parent_id = 0");
+    ensure_account_integrity_constraints($pdo);
+    create_account_integrity_triggers($pdo);
 }
 
 function bootstrap_admin(PDO $pdo, string $username, string $password): bool
