@@ -32,6 +32,10 @@ for topic in 'Docker' '邀请码' '备份' '恢复' 'HTTPS' '更新' '回滚'; d
     grep -q "$topic" README.md || { echo "README is missing topic: $topic" >&2; exit 1; }
 done
 
+for topic in 'GHCR' 'docker compose pull' 'APP_IMAGE'; do
+    grep -q "$topic" README.md || { echo "README is missing image distribution topic: $topic" >&2; exit 1; }
+done
+
 
 for topic in '10 秒' '版本冲突' '操作日志' '强制退出' '迁移校验'; do
     grep -q "$topic" README.md || { echo "README is missing integrity topic: $topic" >&2; exit 1; }
@@ -40,6 +44,12 @@ done
 grep -q 'mariadb:11.4' .github/workflows/ci.yml
 grep -q 'compose_test.sh' .github/workflows/ci.yml
 grep -q 'tests/run.php' .github/workflows/ci.yml
+grep -q 'packages: write' .github/workflows/ci.yml
+grep -q 'docker/login-action' .github/workflows/ci.yml
+grep -q 'docker/build-push-action' .github/workflows/ci.yml
+grep -q 'linux/amd64,linux/arm64' .github/workflows/ci.yml
+grep -q 'ghcr.io/shudaizi520/jinpai-inventory' .github/workflows/ci.yml
+grep -q 'docker compose -f compose.truenas.example.yaml config' .github/workflows/ci.yml
 grep -q 'version="0.20.3"' php/assets/xlsx.full.min.js
 
 if git ls-files | grep -Eq '(^|/)\.env$|\.(sql|sql\.gz|sqlite|db|rar)$'; then

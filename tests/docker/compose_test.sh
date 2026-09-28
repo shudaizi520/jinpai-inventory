@@ -4,7 +4,7 @@ set -eu
 root_dir=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$root_dir"
 
-required_files='Dockerfile compose.yaml .dockerignore .env.example docker/apache-security.conf php/health.php scripts/docker-entrypoint.sh scripts/healthcheck.php'
+required_files='Dockerfile compose.yaml compose.build.yaml compose.truenas.example.yaml .dockerignore .env.example docker/apache-security.conf php/health.php scripts/docker-entrypoint.sh scripts/healthcheck.php'
 for file in $required_files; do
     test -f "$file" || { echo "Missing $file" >&2; exit 1; }
 done
@@ -13,6 +13,18 @@ grep -Eq '^FROM php:8\.4-apache' Dockerfile
 grep -q 'pdo_mysql' Dockerfile
 grep -q 'COPY php/lib/ /opt/inventory/php/lib/' Dockerfile
 grep -q 'inventory_db_data:' compose.yaml
+grep -q 'ghcr.io/shudaizi520/jinpai-inventory' compose.yaml
+grep -q '^APP_IMAGE=ghcr.io/shudaizi520/jinpai-inventory:latest$' .env.example
+grep -q 'build:' compose.build.yaml
+grep -q 'context: \.' compose.build.yaml
+if grep -q '^[[:space:]]*build:' compose.yaml; then
+    echo 'Default Compose file must pull the published image instead of building locally.' >&2
+    exit 1
+fi
+grep -q 'ghcr.io/shudaizi520/jinpai-inventory:latest' compose.truenas.example.yaml
+grep -q 'db-password: &db-password change-me' compose.truenas.example.yaml
+grep -q 'root-password: &root-password replace-me' compose.truenas.example.yaml
+grep -q 'inventory_db_data:' compose.truenas.example.yaml
 grep -q 'condition: service_healthy' compose.yaml
 grep -q 'healthcheck:' compose.yaml
 grep -q 'DEFAULT_REGISTRATION_MODE:' compose.yaml

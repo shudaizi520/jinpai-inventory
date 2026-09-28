@@ -1,0 +1,55 @@
+# TrueNAS Custom App template.
+# Replace both password placeholders below with different random values before saving.
+x-inventory-secrets:
+  db-password: &db-password change-me
+  root-password: &root-password replace-me
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: inventory
+      MARIADB_USER: inventory
+      MARIADB_PASSWORD: *db-password
+      MARIADB_ROOT_PASSWORD: *root-password
+      TZ: Asia/Shanghai
+    volumes:
+      - inventory_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  app:
+    image: ghcr.io/shudaizi520/jinpai-inventory:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: inventory
+      DB_USER: inventory
+      DB_PASSWORD: *db-password
+      BOOTSTRAP_ADMIN_USERNAME: admin
+      BOOTSTRAP_ADMIN_PASSWORD: ""
+      APP_TIMEZONE: Asia/Shanghai
+      SESSION_COOKIE_SECURE: "false"
+      TRUSTED_PROXIES: ""
+      MAX_PRIMARY_ACCOUNTS: 50
+      DEFAULT_REGISTRATION_MODE: invite
+    ports:
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "php", "/opt/inventory/scripts/healthcheck.php"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  inventory_db_data:

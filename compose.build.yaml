@@ -1,0 +1,5 @@
+services:
+  app:
+    image: jinpai-inventory-app:local
+    build:
+      context: .
