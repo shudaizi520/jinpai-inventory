@@ -1955,7 +1955,10 @@ if ($is_initial_admin) {
         result.data.events.forEach(event => {
             const row = document.createElement('tr');
             row.className = 'border-t border-slate-100';
-            [event.created_at, event.actor_username, labels[event.action_type] || event.action_type, event.service_no || '-'].forEach(value => {
+            const target = event.entity_type === 'account'
+                ? (event.after_json?.username || event.before_json?.username || '-')
+                : (event.service_no || '-');
+            [event.created_at, event.actor_username, labels[event.action_type] || event.action_type, target].forEach(value => {
                 const cell = document.createElement('td');
                 cell.className = 'p-3 text-slate-600';
                 cell.textContent = String(value || '-');

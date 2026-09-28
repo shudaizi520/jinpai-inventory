@@ -23,7 +23,7 @@ function endpoint_http_request(string $url, string $method, ?string $body, array
             'content' => $body ?? '',
             'ignore_errors' => true,
             'follow_location' => 0,
-            'timeout' => 5,
+            'timeout' => 10,
         ],
     ]);
     $responseBody = @file_get_contents($url, false, $context);

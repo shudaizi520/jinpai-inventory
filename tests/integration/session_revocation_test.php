@@ -25,7 +25,7 @@ test('credential and employee permission changes revoke only obsolete sessions',
         assert_same('success', $permissionChange['status']);
         assert_same(401, session_test_heartbeat($baseUrl, $workerA)['status']);
         assert_same(401, session_test_heartbeat($baseUrl, $workerB)['status']);
-        assert_same(200, session_test_heartbeat($baseUrl, $ownerB)['status']);
+        assert_same(200, session_test_heartbeat($baseUrl, $ownerB)['status'], 'owner session should survive employee permission changes');
 
         $workerA = endpoint_login($baseUrl, 'endpoint-worker-a', 'EndpointOwner12!');
         $workerB = endpoint_login($baseUrl, 'endpoint-worker-a', 'EndpointOwner12!');
@@ -39,14 +39,14 @@ test('credential and employee permission changes revoke only obsolete sessions',
         assert_same('success', $passwordChange['status']);
         assert_same(401, session_test_heartbeat($baseUrl, $workerA)['status']);
         assert_same(401, session_test_heartbeat($baseUrl, $workerB)['status']);
-        assert_same(200, session_test_heartbeat($baseUrl, $ownerB)['status']);
+        assert_same(200, session_test_heartbeat($baseUrl, $ownerB)['status'], 'owner session should survive employee password changes');
 
         $selfChange = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', [
             'action' => 'change_my_password', 'old_pwd' => 'EndpointOwner12!',
             'new_pwd' => 'OwnerReplacement12!',
         ], $ownerA['cookies'], $ownerA['csrf']));
         assert_same('success', $selfChange['status']);
-        assert_same(200, session_test_heartbeat($baseUrl, $ownerA)['status']);
+        assert_same(200, session_test_heartbeat($baseUrl, $ownerA)['status'], 'password-changing session should retain its own new version');
         assert_same(401, session_test_heartbeat($baseUrl, $ownerB)['status']);
 
         $ownerB = endpoint_login($baseUrl, 'endpoint-owner-a', 'OwnerReplacement12!');

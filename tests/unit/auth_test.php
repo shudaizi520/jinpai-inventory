@@ -85,3 +85,11 @@ test('password recovery uses independent ip and account rate keys', function ():
         recovery_rate_keys('203.0.113.9', 'owner')
     );
 });
+
+test('settings mutations retain only their own atomic session version', function (): void {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/php/api_inventory.php');
+    assert_true(is_string($source));
+    assert_true(substr_count($source, 'WHERE id=? AND session_version=?') >= 2);
+    assert_true(substr_count($source, '$_SESSION[\'session_version\'] = $currentSessionVersion + 1') >= 2);
+    assert_false(str_contains($source, 'SELECT session_version FROM users WHERE id = ?'));
+});

@@ -112,19 +112,17 @@ function require_current_session_user(PDO $pdo): array
     return validate_authenticated_session_user($user);
 }
 
-function advance_session_version(PDO $pdo, int $userId): int
+function advance_session_version(PDO $pdo, int $userId, int $expectedVersion): int
 {
-    if ($userId < 1) {
+    if ($userId < 1 || $expectedVersion < 1) {
         throw new InvalidArgumentException('账号编号无效。');
     }
-    $statement = $pdo->prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?');
-    $statement->execute([$userId]);
+    $statement = $pdo->prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ? AND session_version = ?');
+    $statement->execute([$userId, $expectedVersion]);
     if ($statement->rowCount() !== 1) {
-        throw new RuntimeException('账号不存在。');
+        throw new HttpException('登录状态失效', 401);
     }
-    $read = $pdo->prepare('SELECT session_version FROM users WHERE id = ?');
-    $read->execute([$userId]);
-    return (int) $read->fetchColumn();
+    return $expectedVersion + 1;
 }
 
 function perform_logout(bool $destroySession = true): void

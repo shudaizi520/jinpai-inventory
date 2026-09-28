@@ -60,6 +60,9 @@ test('fresh database migration is complete and idempotent', function (): void {
             assert_true(in_array($constraint, $constraints, true), "Missing constraint {$constraint}");
         }
 
+        assert_same(1, (int) $pdo->query("SELECT COUNT(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='audit_events' AND INDEX_NAME='idx_audit_tenant_id'")->fetchColumn());
+
         $triggers = $pdo->query("SELECT TRIGGER_NAME FROM information_schema.TRIGGERS
             WHERE TRIGGER_SCHEMA = DATABASE() ORDER BY TRIGGER_NAME")->fetchAll(PDO::FETCH_COLUMN);
         foreach (['trg_inventory_owner_insert', 'trg_inventory_owner_update', 'trg_users_parent_insert', 'trg_users_parent_update', 'trg_users_primary_delete'] as $trigger) {
@@ -68,6 +71,28 @@ test('fresh database migration is complete and idempotent', function (): void {
         assert_same('invite', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='registration_mode'")->fetchColumn());
         assert_same('pending', $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key='initial_admin_setup'")->fetchColumn());
         assert_same(4, (int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn());
+    });
+});
+
+test('migrated ownership rules reject primary demotion and cascade tenant data', function (): void {
+    migration_test_database(function (PDO $pdo): void {
+        run_migrations($pdo);
+        $pdo->exec("INSERT INTO users (id, username, password, parent_id) VALUES
+            (10, 'owner-a', 'hash', 0), (11, 'worker-a', 'hash', 10), (20, 'owner-b', 'hash', 0)");
+        $pdo->exec("INSERT INTO inventory_items (user_id, service_no, quantity, status) VALUES (10, 'OWNED-ITEM', 1, 'US')");
+        $pdo->exec("INSERT INTO tenant_inventory_state (tenant_id, revision) VALUES (10, 1)");
+        $pdo->exec("INSERT INTO audit_events (tenant_id, actor_user_id, actor_username, action_type, entity_type)
+            VALUES (10, 10, 'owner-a', 'inventory.create', 'inventory')");
+
+        assert_throws(fn () => $pdo->exec('UPDATE users SET parent_id=20 WHERE id=10'), PDOException::class);
+        assert_same(0, (int) $pdo->query('SELECT parent_id FROM users WHERE id=10')->fetchColumn());
+        assert_throws(fn () => $pdo->exec('UPDATE users SET parent_id=10 WHERE id=10'), PDOException::class);
+
+        $pdo->exec('DELETE FROM users WHERE id=11');
+        $pdo->exec('DELETE FROM users WHERE id=10');
+        assert_same(0, (int) $pdo->query("SELECT COUNT(*) FROM inventory_items WHERE service_no='OWNED-ITEM'")->fetchColumn());
+        assert_same(0, (int) $pdo->query('SELECT COUNT(*) FROM tenant_inventory_state WHERE tenant_id=10')->fetchColumn());
+        assert_same(0, (int) $pdo->query('SELECT COUNT(*) FROM audit_events WHERE tenant_id=10')->fetchColumn());
     });
 });
 

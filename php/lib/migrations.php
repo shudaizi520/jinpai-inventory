@@ -371,6 +371,7 @@ function create_account_integrity_tables(PDO $pdo): void
         source_event_id BIGINT UNSIGNED NULL,
         created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
         UNIQUE KEY uq_audit_restore_source (source_event_id),
+        INDEX idx_audit_tenant_id (tenant_id, id),
         INDEX idx_audit_tenant_created (tenant_id, created_at, id),
         INDEX idx_audit_tenant_entity (tenant_id, entity_type, entity_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
@@ -380,6 +381,9 @@ function ensure_account_integrity_constraints(PDO $pdo): void
 {
     if (!database_index_exists($pdo, 'users', 'idx_users_parent_id')) {
         $pdo->exec('CREATE INDEX idx_users_parent_id ON users (parent_id)');
+    }
+    if (!database_index_exists($pdo, 'audit_events', 'idx_audit_tenant_id')) {
+        $pdo->exec('CREATE INDEX idx_audit_tenant_id ON audit_events (tenant_id, id)');
     }
 
     if (!database_constraint_exists($pdo, 'fk_inventory_owner')) {
@@ -407,6 +411,9 @@ function create_account_integrity_triggers(PDO $pdo): void
             END",
         'trg_users_parent_update' => "CREATE TRIGGER trg_users_parent_update BEFORE UPDATE ON users FOR EACH ROW
             BEGIN
+                IF OLD.parent_id = 0 AND NEW.parent_id <> 0 THEN
+                    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'primary account ownership cannot be changed';
+                END IF;
                 IF NEW.parent_id <> 0 AND (SELECT COUNT(*) FROM users owner WHERE owner.id = NEW.parent_id AND owner.parent_id = 0) <> 1 THEN
                     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'employee parent must be an existing primary account';
                 END IF;

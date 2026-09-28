@@ -104,7 +104,7 @@ function list_tenant_audit_events(PDO $pdo, int $tenantId, int $page, int $limit
     return ['events' => $events, 'page' => $page, 'limit' => $limit, 'has_more' => $hasMore];
 }
 
-function restore_deleted_inventory(PDO $pdo, int $tenantId, int $eventId, array $actor): int
+function restore_deleted_inventory(PDO $pdo, int $tenantId, int $eventId, array $actor, callable $authorize): int
 {
     if (!$pdo->inTransaction()) throw new LogicException('恢复库存必须在事务中执行。');
     $statement = $pdo->prepare("SELECT * FROM audit_events
@@ -126,6 +126,7 @@ function restore_deleted_inventory(PDO $pdo, int $tenantId, int $eventId, array 
     if ($serviceNo === '' || !in_array($status, ['US', 'TRANSIT', 'CN_WH', 'SOLD', 'REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD'], true)) {
         throw new HttpException('删除快照已损坏，无法恢复。', 409);
     }
+    $authorize($snapshot);
     if (!in_array($status, ['REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD'], true)) {
         $conflict = $pdo->prepare("SELECT id FROM inventory_items
             WHERE user_id = ? AND service_no = ?

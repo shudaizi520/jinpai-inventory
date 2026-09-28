@@ -89,3 +89,55 @@ test('delete recovery rejects a conflicting active service number', function ():
         assert_same(1, (int) $pdo->query("SELECT COUNT(*) FROM inventory_items WHERE user_id=10 AND service_no='OWNER-A-ITEM'")->fetchColumn());
     });
 });
+
+test('audit financial values follow the current warehouse lock', function (): void {
+    endpoint_database(function (PDO $pdo, string $baseUrl): void {
+        $owner = endpoint_login($baseUrl, 'endpoint-owner-a', 'EndpointOwner12!');
+        $item = $pdo->query("SELECT * FROM inventory_items WHERE user_id=10 AND service_no='OWNER-A-ITEM'")->fetch();
+        $response = endpoint_form_request($baseUrl . '/api_inventory.php', [
+            'action' => 'save', 'id' => $item['id'], 'row_version' => $item['row_version'],
+            'service_no' => $item['service_no'], 'quantity' => 1, 'status' => 'US',
+            'batch_no' => '', 'config_desc' => 'audited', 'cost_rmb' => 123.45,
+            'freight' => 6.78, 'receiver' => '', 'remarks' => '', 'collected_amount' => 0,
+        ], $owner['cookies'], $owner['csrf']);
+        assert_same(200, $response['status']);
+
+        $pdo->exec('UPDATE users SET lock_tab_us=1 WHERE id=10');
+        $log = endpoint_json(endpoint_http_request($baseUrl . '/api_inventory.php?action=list_audit_events&page=1&limit=20', 'GET', null, [], $owner['cookies']));
+        $event = array_values(array_filter($log['data']['events'], static fn (array $row): bool => $row['action_type'] === 'inventory.update'))[0] ?? null;
+        assert_true(is_array($event));
+        assert_same('***', $event['before_json']['cost_rmb']);
+        assert_same('***', $event['after_json']['cost_rmb']);
+        assert_same('***', $event['after_json']['freight']);
+
+        $pdo->exec('UPDATE users SET lock_tab_us=0 WHERE id=10');
+        $log = endpoint_json(endpoint_http_request($baseUrl . '/api_inventory.php?action=list_audit_events&page=1&limit=20', 'GET', null, [], $owner['cookies']));
+        $event = array_values(array_filter($log['data']['events'], static fn (array $row): bool => $row['action_type'] === 'inventory.update'))[0] ?? null;
+        assert_same('123.45', (string) $event['after_json']['cost_rmb']);
+    });
+});
+
+test('delete recovery enforces current warehouse permission and financial lock', function (): void {
+    endpoint_database(function (PDO $pdo, string $baseUrl): void {
+        $owner = endpoint_login($baseUrl, 'endpoint-owner-a', 'EndpointOwner12!');
+        $item = $pdo->query("SELECT * FROM inventory_items WHERE user_id=10 AND service_no='OWNER-A-ITEM'")->fetch();
+        assert_same(200, endpoint_form_request($baseUrl . '/api_inventory.php', [
+            'action' => 'delete', 'id' => $item['id'], 'row_version' => $item['row_version'],
+        ], $owner['cookies'], $owner['csrf'])['status']);
+        $eventId = (int) $pdo->query("SELECT id FROM audit_events WHERE tenant_id=10 AND action_type='inventory.delete' ORDER BY id DESC LIMIT 1")->fetchColumn();
+
+        $pdo->exec('UPDATE users SET perm_tab_us=0 WHERE id=10');
+        $disabled = endpoint_form_request($baseUrl . '/api_inventory.php', [
+            'action' => 'restore_deleted_inventory', 'event_id' => $eventId,
+        ], $owner['cookies'], $owner['csrf']);
+        assert_same(403, $disabled['status']);
+        assert_same(0, (int) $pdo->query("SELECT COUNT(*) FROM inventory_items WHERE service_no='OWNER-A-ITEM'")->fetchColumn());
+
+        $pdo->exec('UPDATE users SET perm_tab_us=1, lock_tab_us=1 WHERE id=10');
+        $locked = endpoint_form_request($baseUrl . '/api_inventory.php', [
+            'action' => 'restore_deleted_inventory', 'event_id' => $eventId,
+        ], $owner['cookies'], $owner['csrf']);
+        assert_same(403, $locked['status']);
+        assert_same(0, (int) $pdo->query("SELECT COUNT(*) FROM inventory_items WHERE service_no='OWNER-A-ITEM'")->fetchColumn());
+    });
+});

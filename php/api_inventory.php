@@ -90,12 +90,40 @@ try {
         if ($parent_id > 0) throw new HttpException('员工账号无权查看操作日志。', 403);
         $page = positive_int_input($_GET['page'] ?? 1, '页码', 100000);
         $limit = positive_int_input($_GET['limit'] ?? 20, '每页数量', 100);
-        echo json_encode(['status' => 'success', 'data' => list_tenant_audit_events($pdo, $owner_id, $page, $limit)], JSON_UNESCAPED_UNICODE);
+        $auditData = list_tenant_audit_events($pdo, $owner_id, $page, $limit);
+        $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
+        $allowed = allowed_statuses($currUser, $ownerData);
+        foreach ($auditData['events'] as &$event) {
+            if (($event['entity_type'] ?? '') !== 'inventory') continue;
+            foreach (['before_json', 'after_json'] as $snapshotField) {
+                $snapshot = $event[$snapshotField] ?? null;
+                if (!is_array($snapshot)) continue;
+                $status = (string) ($snapshot['status'] ?? '');
+                $canView = in_array($status, $allowed, true)
+                    && can_manage_financial_values($perm_finance, $ownerData, [$status], $unlocked);
+                if (!$canView) $event[$snapshotField] = mask_financial_fields($snapshot);
+            }
+        }
+        unset($event);
+        echo json_encode(['status' => 'success', 'data' => $auditData], JSON_UNESCAPED_UNICODE);
     }
     elseif ($action === 'restore_deleted_inventory') {
         if ($parent_id > 0) throw new HttpException('员工账号无权恢复删除记录。', 403);
         $eventId = positive_int_input($_POST['event_id'] ?? null, '日志编号');
-        $restoredId = with_tenant_inventory_mutation($pdo, $owner_id, fn (): int => restore_deleted_inventory($pdo, $owner_id, $eventId, $currUser));
+        $restoredId = with_tenant_inventory_mutation($pdo, $owner_id, function () use ($pdo, $owner_id, $eventId, $currUser, $user_id): int {
+            return restore_deleted_inventory($pdo, $owner_id, $eventId, $currUser, function (array $snapshot) use ($pdo, $owner_id, $user_id): void {
+                $ownerStatement = $pdo->prepare('SELECT * FROM users WHERE id = ? AND parent_id = 0 FOR UPDATE');
+                $ownerStatement->execute([$owner_id]);
+                $currentOwner = $ownerStatement->fetch(PDO::FETCH_ASSOC);
+                if (!is_array($currentOwner)) throw new HttpException('登录状态失效', 401);
+                $status = (string) ($snapshot['status'] ?? '');
+                require_status_access($status, $currentOwner, $currentOwner);
+                $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
+                if (!can_manage_financial_values((int) ($currentOwner['perm_finance'] ?? 1), $currentOwner, [$status], $unlocked)) {
+                    throw new HttpException('当前仓库的财务保险箱尚未解锁，无法恢复。', 403);
+                }
+            });
+        });
         echo json_encode(['status' => 'success', 'data' => ['id' => $restoredId]], JSON_UNESCAPED_UNICODE);
     }
     elseif ($action === 'get_registration_settings') {
@@ -870,11 +898,11 @@ try {
         $hash_a3 = password_hash($a3, PASSWORD_DEFAULT);
 
         // --- 注意：execute 里面存入的是加密后的 $hash_a1 等变量 ---
-        $stmt = $pdo->prepare("UPDATE users SET sec_q1=?, sec_a1=?, sec_q2=?, sec_a2=?, sec_q3=?, sec_a3=?, session_version=session_version+1 WHERE id=?");
-        $stmt->execute([$q1, $hash_a1, $q2, $hash_a2, $q3, $hash_a3, $user_id]);
-        $stmtVersion = $pdo->prepare('SELECT session_version FROM users WHERE id = ?');
-        $stmtVersion->execute([$user_id]);
-        $_SESSION['session_version'] = (int) $stmtVersion->fetchColumn();
+        $currentSessionVersion = (int) $_SESSION['session_version'];
+        $stmt = $pdo->prepare("UPDATE users SET sec_q1=?, sec_a1=?, sec_q2=?, sec_a2=?, sec_q3=?, sec_a3=?, session_version=session_version + 1 WHERE id=? AND session_version=?");
+        $stmt->execute([$q1, $hash_a1, $q2, $hash_a2, $q3, $hash_a3, $user_id, $currentSessionVersion]);
+        if ($stmt->rowCount() !== 1) throw new HttpException('登录状态失效', 401);
+        $_SESSION['session_version'] = $currentSessionVersion + 1;
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'change_my_password') {
@@ -891,7 +919,7 @@ try {
         try {
             $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
             $stmt->execute([$new_hash, $user_id]);
-            $newSessionVersion = advance_session_version($pdo, $user_id);
+            $newSessionVersion = advance_session_version($pdo, $user_id, (int) $_SESSION['session_version']);
             $pdo->commit();
             $_SESSION['session_version'] = $newSessionVersion;
         } catch (Throwable $exception) {
@@ -948,11 +976,11 @@ try {
         $l_us = isset($_POST['l_us']) ? 1 : 0; $l_transit = isset($_POST['l_transit']) ? 1 : 0; $l_cn = isset($_POST['l_cn']) ? 1 : 0; $l_sold = isset($_POST['l_sold']) ? 1 : 0; $l_repair = isset($_POST['l_repair']) ? 1 : 0; $l_repair_done = isset($_POST['l_repair_done']) ? 1 : 0;
         $l_parts = isset($_POST['l_parts']) ? 1 : 0; $l_parts_sold = isset($_POST['l_parts_sold']) ? 1 : 0;
 
-        $stmt = $pdo->prepare("UPDATE users SET perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_tab_parts=?, perm_tab_parts_sold=?, lock_tab_us=?, lock_tab_transit=?, lock_tab_cn=?, lock_tab_sold=?, lock_tab_repair=?, lock_tab_repair_done=?, lock_tab_parts=?, lock_tab_parts_sold=?, session_version=session_version+1 WHERE id=?");
-        $stmt->execute([$p_us, $p_transit, $p_cn, $p_sold, $p_repair, $p_repair_done, $p_parts, $p_parts_sold, $l_us, $l_transit, $l_cn, $l_sold, $l_repair, $l_repair_done, $l_parts, $l_parts_sold, $user_id]);
-        $stmtVersion = $pdo->prepare('SELECT session_version FROM users WHERE id = ?');
-        $stmtVersion->execute([$user_id]);
-        $_SESSION['session_version'] = (int) $stmtVersion->fetchColumn();
+        $currentSessionVersion = (int) $_SESSION['session_version'];
+        $stmt = $pdo->prepare("UPDATE users SET perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_tab_parts=?, perm_tab_parts_sold=?, lock_tab_us=?, lock_tab_transit=?, lock_tab_cn=?, lock_tab_sold=?, lock_tab_repair=?, lock_tab_repair_done=?, lock_tab_parts=?, lock_tab_parts_sold=?, session_version=session_version + 1 WHERE id=? AND session_version=?");
+        $stmt->execute([$p_us, $p_transit, $p_cn, $p_sold, $p_repair, $p_repair_done, $p_parts, $p_parts_sold, $l_us, $l_transit, $l_cn, $l_sold, $l_repair, $l_repair_done, $l_parts, $l_parts_sold, $user_id, $currentSessionVersion]);
+        if ($stmt->rowCount() !== 1) throw new HttpException('登录状态失效', 401);
+        $_SESSION['session_version'] = $currentSessionVersion + 1;
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'delete_my_account') {
