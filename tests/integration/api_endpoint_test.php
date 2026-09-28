@@ -252,15 +252,17 @@ test('http inventory and employee mutations cannot cross tenant boundaries', fun
         assert_same('success', $list['status']);
         assert_same(1, count($list['data']));
         assert_same('OWNER-A-ITEM', $list['data'][0]['service_no']);
+        $foreignVersion = (int) $pdo->query("SELECT row_version FROM inventory_items WHERE id = {$foreignId}")->fetchColumn();
+        $foreignPartVersion = (int) $pdo->query("SELECT row_version FROM inventory_items WHERE id = {$foreignPartId}")->fetchColumn();
 
         $mutations = [
-            ['action' => 'save', 'id' => $foreignId, 'service_no' => 'OWNER-B-ITEM', 'quantity' => 1, 'status' => 'US', 'cost_rmb' => 1, 'freight' => 1, 'collected_amount' => 1],
-            ['action' => 'update_status', 'id' => $foreignId, 'status' => 'CN_WH'],
-            ['action' => 'delete', 'id' => $foreignId],
-            ['action' => 'batch_update_status', 'ids' => (string) $foreignId, 'status' => 'CN_WH'],
-            ['action' => 'batch_edit', 'ids' => (string) $foreignId, 'update_remarks' => '1', 'remarks' => 'tampered'],
-            ['action' => 'batch_delete', 'ids' => (string) $foreignId],
-            ['action' => 'dispatch_part', 'id' => $foreignPartId, 'dispatch_qty' => 1, 'receiver' => 'attacker', 'unit_collected' => 1],
+            ['action' => 'save', 'id' => $foreignId, 'row_version' => $foreignVersion, 'service_no' => 'OWNER-B-ITEM', 'quantity' => 1, 'status' => 'US', 'cost_rmb' => 1, 'freight' => 1, 'collected_amount' => 1],
+            ['action' => 'update_status', 'id' => $foreignId, 'row_version' => $foreignVersion, 'status' => 'CN_WH'],
+            ['action' => 'delete', 'id' => $foreignId, 'row_version' => $foreignVersion],
+            ['action' => 'batch_update_status', 'ids' => (string) $foreignId, 'versions' => json_encode([$foreignId => $foreignVersion]), 'status' => 'CN_WH'],
+            ['action' => 'batch_edit', 'ids' => (string) $foreignId, 'versions' => json_encode([$foreignId => $foreignVersion]), 'update_remarks' => '1', 'remarks' => 'tampered'],
+            ['action' => 'batch_delete', 'ids' => (string) $foreignId, 'versions' => json_encode([$foreignId => $foreignVersion])],
+            ['action' => 'dispatch_part', 'id' => $foreignPartId, 'row_version' => $foreignPartVersion, 'dispatch_qty' => 1, 'receiver' => 'attacker', 'unit_collected' => 1],
             ['action' => 'save_sub_account', 'sub_id' => 21, 'sub_user' => 'tampered-worker', 'p_hist' => 999],
             ['action' => 'delete_sub_account', 'sub_id' => 21],
         ];
@@ -272,9 +274,11 @@ test('http inventory and employee mutations cannot cross tenant boundaries', fun
 
         $soldId = (int) $pdo->query("SELECT id FROM inventory_items WHERE user_id = 10 AND service_no = 'OWNER-A-SOLD'")->fetchColumn();
         $partId = (int) $pdo->query("SELECT id FROM inventory_items WHERE user_id = 10 AND service_no = 'OWNER-A-PART'")->fetchColumn();
+        $soldVersion = (int) $pdo->query("SELECT row_version FROM inventory_items WHERE id = {$soldId}")->fetchColumn();
+        $partVersion = (int) $pdo->query("SELECT row_version FROM inventory_items WHERE id = {$partId}")->fetchColumn();
         $invalidSoldEdits = [
-            ['action' => 'batch_edit', 'ids' => (string) $soldId, 'update_receiver' => '1', 'receiver' => ''],
-            ['action' => 'batch_edit', 'ids' => (string) $soldId, 'update_collected_amount' => '1', 'unit_collected' => 0],
+            ['action' => 'batch_edit', 'ids' => (string) $soldId, 'versions' => json_encode([$soldId => $soldVersion]), 'update_receiver' => '1', 'receiver' => ''],
+            ['action' => 'batch_edit', 'ids' => (string) $soldId, 'versions' => json_encode([$soldId => $soldVersion]), 'update_collected_amount' => '1', 'unit_collected' => 0],
         ];
         foreach ($invalidSoldEdits as $mutation) {
             $payload = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', $mutation, $cookies, $csrf));
@@ -283,6 +287,7 @@ test('http inventory and employee mutations cannot cross tenant boundaries', fun
         $zeroValueDispatch = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', [
             'action' => 'dispatch_part',
             'id' => $partId,
+            'row_version' => $partVersion,
             'dispatch_qty' => 1,
             'receiver' => 'customer',
             'unit_collected' => 0,
@@ -335,6 +340,7 @@ test('http restricted employees cannot overwrite masked financial values', funct
         $save = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', [
             'action' => 'save',
             'id' => $itemId,
+            'row_version' => $list['data'][0]['row_version'],
             'service_no' => 'OWNER-A-ITEM',
             'quantity' => 2,
             'status' => 'US',
@@ -343,10 +349,12 @@ test('http restricted employees cannot overwrite masked financial values', funct
             'collected_amount' => 0,
         ], $cookies, $csrf));
         assert_same('success', $save['status']);
+        $itemVersion = (int) $pdo->query("SELECT row_version FROM inventory_items WHERE id = {$itemId}")->fetchColumn();
 
         $batch = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', [
             'action' => 'batch_edit',
             'ids' => (string) $itemId,
+            'versions' => json_encode([$itemId => $itemVersion]),
             'update_collected_amount' => '1',
             'unit_collected' => 1,
         ], $cookies, $csrf));
@@ -372,6 +380,7 @@ test('http restricted employees cannot overwrite masked financial values', funct
         $dispatch = endpoint_json(endpoint_form_request($baseUrl . '/api_inventory.php', [
             'action' => 'dispatch_part',
             'id' => $partId,
+            'row_version' => (int) $pdo->query("SELECT row_version FROM inventory_items WHERE id = {$partId}")->fetchColumn(),
             'dispatch_qty' => 1,
             'receiver' => 'customer',
             'unit_collected' => 1,

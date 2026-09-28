@@ -21,6 +21,14 @@ test('dynamic api errors and usernames are not interpolated into html sinks', fu
     assert_false(str_contains($source, '${msg}`'), 'Toast message is inserted into innerHTML');
 });
 
+test('inventory browser mutations send row versions for conflict detection', function (): void {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/php/index.php');
+    assert_true(is_string($source));
+    assert_true(str_contains($source, "fd.append('row_version', rowVersionFor(id))"));
+    assert_true(str_contains($source, "fd.append('versions', versionMapFor(ids))"));
+    assert_true(str_contains($source, 'name="row_version"'));
+});
+
 test('authentication pages do not load a remote background image', function (): void {
     $login = file_get_contents(dirname(__DIR__, 2) . '/php/login.php');
     $register = file_get_contents(dirname(__DIR__, 2) . '/php/register.php');

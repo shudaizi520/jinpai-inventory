@@ -38,7 +38,7 @@ jobs:
           TEST_DB_DSN: mysql:host=127.0.0.1;port=3306;charset=utf8mb4
           TEST_DB_USER: root
           TEST_DB_PASSWORD: test-root-password
-        run: php tests/run.php tests/integration/migration_test.php tests/integration/initial_setup_test.php tests/integration/invitation_test.php tests/integration/csrf_test.php tests/integration/tenant_isolation_test.php tests/integration/admin_settings_test.php tests/integration/api_endpoint_test.php tests/integration/session_revocation_test.php
+        run: php tests/run.php tests/integration/migration_test.php tests/integration/initial_setup_test.php tests/integration/invitation_test.php tests/integration/csrf_test.php tests/integration/tenant_isolation_test.php tests/integration/admin_settings_test.php tests/integration/api_endpoint_test.php tests/integration/session_revocation_test.php tests/integration/inventory_concurrency_test.php
       - name: Packaging and release checks
         run: |
           sh tests/docker/compose_test.sh

@@ -444,6 +444,7 @@ if ($is_initial_admin) {
             <div class="p-6">
                 <form id="dispatchForm" onsubmit="submitDispatch(event)" class="space-y-4">
                     <input type="hidden" id="dispatch_id">
+                    <input type="hidden" id="dispatch_row_version">
 
                     <div>
                         <label class="block text-sm font-bold text-slate-700 mb-1">出库数量 <span class="text-xs text-indigo-600 font-normal ml-1" id="dispatch_max_label"></span></label>
@@ -852,7 +853,7 @@ if ($is_initial_admin) {
             <div class="overflow-y-auto p-6">
                 <form id="itemForm" onsubmit="saveItem(event)">
                     <input type="hidden" id="form_id" name="id">
-                    <input type="hidden" id="form_updated_at" name="updated_at">
+                    <input type="hidden" id="form_row_version" name="row_version">
                     <div class="grid grid-cols-2 gap-4">
                         <div class="col-span-2 sm:col-span-1">
                             <label class="block text-sm font-bold text-slate-700 mb-1">服务编号/配件型号*</label>
@@ -985,6 +986,17 @@ if ($is_initial_admin) {
 
     // ⚡ 性能提升：新增全局变量，记录最后一次数据库的数据时间戳
     let lastKnownUpdate = null;
+
+    function rowVersionFor(id) {
+        const row = currentData.find(item => Number(item.id) === Number(id));
+        return row ? Number(row.row_version) : 0;
+    }
+
+    function versionMapFor(ids) {
+        const versions = {};
+        ids.forEach(id => { versions[String(id)] = rowVersionFor(id); });
+        return JSON.stringify(versions);
+    }
 
     window.onload = () => {
         if(currentTab !== 'NONE') switchTab(currentTab);
@@ -1528,6 +1540,7 @@ if ($is_initial_admin) {
         const fd = new FormData(document.getElementById('batchEditForm'));
         fd.append('action', 'batch_edit');
         fd.append('ids', ids.join(','));
+        fd.append('versions', versionMapFor(ids));
         fd.append('unlocked', isFinanceUnlocked ? '1' : '0');
 
         let hu = false;
@@ -1579,9 +1592,12 @@ if ($is_initial_admin) {
         const fd = new FormData();
         fd.append('action', 'batch_update_status');
         fd.append('ids', ids.join(','));
+        fd.append('versions', versionMapFor(ids));
         fd.append('status', ns);
 
-        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        const result = await response.json();
+        if (result.status !== 'success') return alert(result.message || '批量流转失败，请刷新后重试。');
         const sa = document.getElementById('selectAllCheckbox');
         if(sa) sa.checked = false;
         loadData();
@@ -1600,6 +1616,7 @@ if ($is_initial_admin) {
         const fd = new FormData();
         fd.append('action', 'batch_delete');
         fd.append('ids', ids.join(','));
+        fd.append('versions', versionMapFor(ids));
 
         try {
             const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
@@ -1630,8 +1647,11 @@ if ($is_initial_admin) {
         const fd = new FormData();
         fd.append('action', 'update_status');
         fd.append('id', id);
+        fd.append('row_version', rowVersionFor(id));
         fd.append('status', ns);
-        await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        const result = await response.json();
+        if (result.status !== 'success') return alert(result.message || '流转失败，请刷新后重试。');
         loadData();
     }
 
@@ -1643,6 +1663,7 @@ if ($is_initial_admin) {
         const fd = new FormData();
         fd.append('action', 'delete');
         fd.append('id', id);
+        fd.append('row_version', rowVersionFor(id));
         try {
             const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
             const j = await r.json();
@@ -1681,7 +1702,7 @@ if ($is_initial_admin) {
         if (PERM_ADD === 0) return alert('安全拦截：您没有新增记录的权限！');
         document.getElementById('itemForm').reset();
         document.getElementById('form_id').value = '';
-        document.getElementById('form_updated_at').value = '';
+        document.getElementById('form_row_version').value = '';
         document.getElementById('form_batch_no').value = '';
         document.getElementById('form_quantity').value = 1;
         document.getElementById('form_status').value = currentTab === 'NONE' ? 'US' : currentTab;
@@ -1720,8 +1741,7 @@ if ($is_initial_admin) {
     function editItem(row) {
         document.getElementById('modalTitle').innerText = '编辑记录 - ' + row.service_no;
         document.getElementById('form_id').value = row.id;
-        // 修复：提取真实的 updated_at 传递给后端，而非业务流转时间 status_timestamp
-        document.getElementById('form_updated_at').value = row.updated_at || '';
+        document.getElementById('form_row_version').value = row.row_version || '';
         document.getElementById('form_service_no').value = row.service_no;
         document.getElementById('form_batch_no').value = row.batch_no || '';
         document.getElementById('form_status').value = row.status;
@@ -1802,6 +1822,7 @@ if ($is_initial_admin) {
     // --- 拆分出库模态框控制 ---
     function openDispatchModal(id, maxQty, name) {
         document.getElementById('dispatch_id').value = id;
+        document.getElementById('dispatch_row_version').value = rowVersionFor(id);
         document.getElementById('dispatch_qty').value = 1;
         document.getElementById('dispatch_qty').max = maxQty;
         document.getElementById('dispatch_max_label').innerText = `(最多可出库: ${maxQty})`;
@@ -1831,6 +1852,7 @@ if ($is_initial_admin) {
             const fd = new FormData();
             fd.append('action', 'dispatch_part');
             fd.append('id', document.getElementById('dispatch_id').value);
+            fd.append('row_version', document.getElementById('dispatch_row_version').value);
             fd.append('dispatch_qty', document.getElementById('dispatch_qty').value);
             fd.append('unit_collected', document.getElementById('dispatch_unit_collected').value);
             fd.append('receiver', document.getElementById('dispatch_receiver').value);
