@@ -49,8 +49,24 @@ grep -q 'docker/login-action' .github/workflows/ci.yml
 grep -q 'docker/build-push-action' .github/workflows/ci.yml
 grep -q 'linux/amd64,linux/arm64' .github/workflows/ci.yml
 grep -q 'ghcr.io/shudaizi520/jinpai-inventory' .github/workflows/ci.yml
+grep -q 'cancel-in-progress:' .github/workflows/ci.yml
+grep -q 'Verify current main revision' .github/workflows/ci.yml
+grep -q 'format=long' .github/workflows/ci.yml
+grep -q 'Verify anonymous multi-platform pull' .github/workflows/ci.yml
+grep -q 'docker logout ghcr.io' .github/workflows/ci.yml
+grep -q 'steps.build.outputs.digest' .github/workflows/ci.yml
 grep -q 'docker compose -f compose.truenas.example.yaml config' .github/workflows/ci.yml
+grep -q 'package-ecosystem: "github-actions"' .github/dependabot.yml
 grep -q 'version="0.20.3"' php/assets/xlsx.full.min.js
+
+if grep -Eq 'uses: (actions|docker)/[^@]+@v[0-9]+([[:space:]]|$)' .github/workflows/ci.yml; then
+    echo 'Release actions must be pinned to full commit SHAs.' >&2
+    exit 1
+fi
+
+for topic in 'RepoDigests' 'sha256:' 'TrueNAS'; do
+    grep -q "$topic" README.md || { echo "README is missing digest rollback topic: $topic" >&2; exit 1; }
+done
 
 if git ls-files | grep -Eq '(^|/)\.env$|\.(sql|sql\.gz|sqlite|db|rar)$'; then
     echo 'Tracked secret/data/archive file detected.' >&2

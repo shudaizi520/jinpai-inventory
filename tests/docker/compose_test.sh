@@ -24,6 +24,8 @@ fi
 grep -q 'ghcr.io/shudaizi520/jinpai-inventory:latest' compose.truenas.example.yaml
 grep -q 'db-password: &db-password change-me' compose.truenas.example.yaml
 grep -q 'root-password: &root-password replace-me' compose.truenas.example.yaml
+grep -q 'test.*MARIADB_PASSWORD.*change-me' compose.truenas.example.yaml
+grep -q 'MARIADB_ROOT_PASSWORD.*replace-me' compose.truenas.example.yaml
 grep -q 'inventory_db_data:' compose.truenas.example.yaml
 grep -q 'condition: service_healthy' compose.yaml
 grep -q 'healthcheck:' compose.yaml

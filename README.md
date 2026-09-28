@@ -56,7 +56,7 @@ docker compose ps
 
 TrueNAS SCALE 可新建一个“自定义应用”，复制 [`compose.truenas.example.yaml`](compose.truenas.example.yaml) 的全部内容，把开头两个密码占位符分别替换成不同的随机密码后保存。这个 YAML 会直接从 GHCR 拉取应用镜像，并创建软件专属的 MariaDB 容器和 `inventory_db_data` 数据卷；不需要另建数据库应用，也不会使用 NAS 上其他软件的数据库。
 
-GHCR 镜像是公开的，朋友安装时不需要 GitHub Token 或账号。`latest` 跟随正式主分支；每次发布还会生成 `sha-提交号` 的不可变镜像，适合锁定版本和回滚。
+GHCR 镜像是公开的，发布流水线会在退出登录后实际检查匿名拉取和两种 CPU 架构，因此朋友安装时不需要 GitHub Token 或账号。`latest` 跟随正式主分支；每次发布还会生成完整的 `sha-提交号` 标签，便于追踪源码。需要永久锁定或回滚时请使用下面记录的 `镜像@sha256:摘要`，因为摘要才不会被标签更新影响。
 
 ## 注册模式与员工
 
@@ -92,23 +92,29 @@ docker compose restart app
 
 ## 更新与回滚
 
-更新前先备份：
+更新前先记录当前镜像摘要并备份。第一条命令会输出类似 `ghcr.io/shudaizi520/jinpai-inventory@sha256:...` 的值，请保存为回滚目标：
 
 ```bash
+docker image inspect --format '{{index .RepoDigests 0}}' "$(docker compose images -q app)"
 ./scripts/backup.sh
 git pull --ff-only
 docker compose pull
 docker compose up -d
 docker compose ps
+docker image inspect --format '{{json .RepoDigests}}' "$(docker compose images -q app)"
 ```
 
-应用启动时自动执行兼容迁移。需要回滚程序时，在 `.env` 把 `APP_IMAGE` 改为更新前记录的不可变镜像标签，再重新拉取：
+应用启动时自动执行兼容迁移。需要回滚程序时，把下面的摘要替换为更新前保存的值；命令会持久修改 `.env`，后续 Compose 操作仍会使用同一个回滚版本：
 
 ```bash
-APP_IMAGE=ghcr.io/shudaizi520/jinpai-inventory:sha-<旧提交短号>
+rollback_image='ghcr.io/shudaizi520/jinpai-inventory@sha256:<更新前记录的摘要>'
+sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${rollback_image}|" .env
 docker compose pull
 docker compose up -d
+docker image inspect --format '{{json .RepoDigests}}' "$(docker compose images -q app)"
 ```
+
+TrueNAS 自定义应用更新前，在应用详情中记录当前 `app` 容器所用镜像摘要。更新时把 YAML 的 `services.app.image` 改成新的完整 SHA 标签或镜像摘要并重新部署；回滚时把这一项改回记录的 `ghcr.io/shudaizi520/jinpai-inventory@sha256:...`，数据库卷保持不变。不要只记录 `latest`，因为它会随新版本移动。
 
 本版本的迁移校验会先检查员工归属、主账号和库存所有权；发现旧数据库存在孤立或嵌套关系时会停止升级并保留原数据，不会自动删除或改绑。新增字段和表保持旧程序可读取原有账号与库存，但数据库结构可能已经升级，仍不要盲目回滚数据库。程序回滚优先使用更新前记录的提交；只有确认必须恢复数据库时才使用更新前备份，因为恢复会丢弃备份之后的新数据。
 
