@@ -5,6 +5,7 @@ require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/authorization.php';
 require_once __DIR__ . '/lib/inventory_consistency.php';
+require_once __DIR__ . '/lib/audit.php';
 require_once __DIR__ . '/lib/registration.php';
 
 header('Content-Type: application/json');
@@ -85,7 +86,19 @@ if ($action === 'check_update') {
 // ---------------------------------
 
 try {
-    if ($action === 'get_registration_settings') {
+    if ($action === 'list_audit_events') {
+        if ($parent_id > 0) throw new HttpException('员工账号无权查看操作日志。', 403);
+        $page = positive_int_input($_GET['page'] ?? 1, '页码', 100000);
+        $limit = positive_int_input($_GET['limit'] ?? 20, '每页数量', 100);
+        echo json_encode(['status' => 'success', 'data' => list_tenant_audit_events($pdo, $owner_id, $page, $limit)], JSON_UNESCAPED_UNICODE);
+    }
+    elseif ($action === 'restore_deleted_inventory') {
+        if ($parent_id > 0) throw new HttpException('员工账号无权恢复删除记录。', 403);
+        $eventId = positive_int_input($_POST['event_id'] ?? null, '日志编号');
+        $restoredId = with_tenant_inventory_mutation($pdo, $owner_id, fn (): int => restore_deleted_inventory($pdo, $owner_id, $eventId, $currUser));
+        echo json_encode(['status' => 'success', 'data' => ['id' => $restoredId]], JSON_UNESCAPED_UNICODE);
+    }
+    elseif ($action === 'get_registration_settings') {
         echo json_encode(['status' => 'success', 'data' => admin_registration_snapshot($pdo, (int) $user_id)]);
     }
     elseif ($action === 'set_registration_mode') {
@@ -268,6 +281,12 @@ try {
             $params = array_merge([$new_status], $ids, [$owner_id]);
             $stmt = $pdo->prepare("UPDATE inventory_items SET status = ?, status_date = CURRENT_DATE(), status_timestamp = CURRENT_TIMESTAMP(), row_version = row_version + 1 WHERE id IN ($inQuery) AND user_id = ?");
             $stmt->execute($params);
+            $updatedItems = load_tenant_items($pdo, $ids, $owner_id, true);
+            $beforeById = [];
+            foreach ($batchItems as $beforeItem) $beforeById[(int) $beforeItem['id']] = $beforeItem;
+            foreach ($updatedItems as $afterItem) {
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.status', 'inventory', (int) $afterItem['id'], $beforeById[(int) $afterItem['id']], $afterItem);
+            }
         }
         });
         echo json_encode(['status' => 'success']);
@@ -351,6 +370,12 @@ try {
                     );
                 }
             }
+            $updatedItems = load_tenant_items($pdo, $ids, $owner_id, true);
+            $beforeById = [];
+            foreach ($batchItems as $beforeItem) $beforeById[(int) $beforeItem['id']] = $beforeItem;
+            foreach ($updatedItems as $afterItem) {
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.update', 'inventory', (int) $afterItem['id'], $beforeById[(int) $afterItem['id']], $afterItem);
+            }
         }
         });
         echo json_encode(['status' => 'success']);
@@ -383,6 +408,9 @@ try {
             // ------------------------------------------------
 
             $params = array_merge($ids, [$owner_id]);
+            foreach ($batchItems as $beforeItem) {
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.delete', 'inventory', (int) $beforeItem['id'], $beforeItem, null);
+            }
             $stmt = $pdo->prepare("DELETE FROM inventory_items WHERE id IN ($inQuery) AND user_id = ?");
             $stmt->execute($params);
         }
@@ -404,7 +432,7 @@ try {
             throw new HttpException("安全拦截：配件出库涉及财务数据，请先取得财务权限并解锁相关仓库！");
         }
 
-        with_tenant_inventory_mutation($pdo, $owner_id, function () use ($pdo, $id, $expectedVersion, $owner_id, $dispatch_qty, $receiver, $unit_collected): void {
+        with_tenant_inventory_mutation($pdo, $owner_id, function () use ($pdo, $id, $expectedVersion, $owner_id, $dispatch_qty, $receiver, $unit_collected, $currUser): void {
             $item = require_tenant_item($pdo, $id, $owner_id, true);
             require_expected_version($item, $expectedVersion);
             if ($item['status'] !== 'PARTS') throw new HttpException("找不到该配件或配件已被转移");
@@ -421,6 +449,8 @@ try {
             if ($dispatch_qty == $item['quantity']) {
                 $stmtUpdate = $pdo->prepare("UPDATE inventory_items SET status='PARTS_SOLD', receiver=?, collected_amount=?, status_date=CURRENT_DATE(), status_timestamp=CURRENT_TIMESTAMP(), row_version=row_version+1 WHERE id=? AND user_id=?");
                 $stmtUpdate->execute([$receiver, $total_collected, $id, $owner_id]);
+                $afterItem = require_tenant_item($pdo, $id, $owner_id, true);
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.dispatch', 'inventory', $id, $item, $afterItem);
             } else {
                 $new_qty = $item['quantity'] - $dispatch_qty;
                 $new_cost = $item['cost_rmb'] - $dispatch_cost;
@@ -435,6 +465,11 @@ try {
 
                 $stmt2 = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, batch_no, quantity, status, status_date, status_timestamp, config_desc, cost_rmb, freight, receiver, remarks, collected_amount) VALUES (?, ?, ?, ?, 'PARTS_SOLD', CURRENT_DATE(), CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?)");
                 $stmt2->execute([$owner_id, $item['service_no'], $item['batch_no'], $dispatch_qty, $item['config_desc'], $dispatch_cost, $dispatch_freight, $receiver, $item['remarks'], $total_collected]);
+                $createdId = (int) $pdo->lastInsertId();
+                $remainingItem = require_tenant_item($pdo, $id, $owner_id, true);
+                $createdItem = require_tenant_item($pdo, $createdId, $owner_id, true);
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.dispatch', 'inventory', $id, $item, $remainingItem);
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.create', 'inventory', $createdId, null, $createdItem);
             }
         });
         echo json_encode(['status' => 'success']);
@@ -497,6 +532,8 @@ try {
                     $stmt = $pdo->prepare("UPDATE inventory_items SET service_no=?, batch_no=?, quantity=?, status=?, config_desc=?, cost_rmb=?, freight=?, receiver=?, remarks=?, collected_amount=?, row_version=row_version+1 WHERE id=? AND user_id=?");
                 }
                 $stmt->execute([$service_no, $input['batch_no'], $qty, $new_status, $input['config_desc'], $cost_rmb, $freight, $input['receiver'], $input['remarks'], $collected, $id, $owner_id]);
+                $afterItem = require_tenant_item($pdo, (int) $id, $owner_id, true);
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.update', 'inventory', (int) $id, $item, $afterItem);
             } else {
                 $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
                 $can_edit_finance = can_manage_financial_values($perm_finance, $ownerData, [$new_status], $unlocked);
@@ -508,6 +545,9 @@ try {
 
                 $stmt = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, batch_no, quantity, status, status_date, status_timestamp, config_desc, cost_rmb, freight, receiver, remarks, collected_amount) VALUES (?, ?, ?, ?, ?, CURRENT_DATE(), CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([$owner_id, $service_no, $input['batch_no'], $qty, $new_status, $input['config_desc'], $cost_rmb, $freight, $input['receiver'], $input['remarks'], $collected]);
+                $createdId = (int) $pdo->lastInsertId();
+                $createdItem = require_tenant_item($pdo, $createdId, $owner_id, true);
+                record_audit_event($pdo, $owner_id, $currUser, 'inventory.create', 'inventory', $createdId, null, $createdItem);
             }
 
         });
@@ -551,6 +591,8 @@ try {
 
         $stmt = $pdo->prepare("UPDATE inventory_items SET status = ?, status_date = CURRENT_DATE(), status_timestamp = CURRENT_TIMESTAMP(), row_version=row_version+1 WHERE id = ? AND user_id = ?");
         $stmt->execute([$new_status, $id, $owner_id]);
+        $afterItem = require_tenant_item($pdo, $id, $owner_id, true);
+        record_audit_event($pdo, $owner_id, $currUser, 'inventory.status', 'inventory', $id, $item, $afterItem);
         });
         echo json_encode(['status' => 'success']);
     }
@@ -576,6 +618,7 @@ try {
         }
         // ------------------------------------------------
 
+        record_audit_event($pdo, $owner_id, $currUser, 'inventory.delete', 'inventory', $id, $item, null);
         $stmt = $pdo->prepare("DELETE FROM inventory_items WHERE id = ? AND user_id = ?");
         $stmt->execute([$id, $owner_id]);
         });
@@ -681,6 +724,8 @@ try {
                         $stmtUpdate = $pdo->prepare("UPDATE inventory_items SET batch_no=?, quantity=?, config_desc=?, status=?, cost_rmb=?, freight=?, receiver=?, remarks=?, collected_amount=?, row_version=row_version+1 WHERE id=? AND user_id=?");
                         $stmtUpdate->execute([$batch_no, $qty, $config_desc, $status, $cost, $freight, $rec, $remarks, $collected, $existsData['id'], $owner_id]);
                     }
+                    $afterItem = require_tenant_item($pdo, (int) $existsData['id'], $owner_id, true);
+                    record_audit_event($pdo, $owner_id, $currUser, 'inventory.import', 'inventory', (int) $existsData['id'], $existsData, $afterItem);
                 } else {
                     // 1. 处理敏感的财务字段（受限）
                     if ($can_edit_finance) {
@@ -700,6 +745,9 @@ try {
                     require_sold_record_details($status, $rec, $collected);
                     $stmtInsert = $pdo->prepare("INSERT INTO inventory_items (user_id, service_no, batch_no, quantity, config_desc, status, status_date, status_timestamp, cost_rmb, freight, receiver, remarks, collected_amount) VALUES (?, ?, ?, ?, ?, ?, CURRENT_DATE(), CURRENT_TIMESTAMP(), ?, ?, ?, ?, ?)");
                     $stmtInsert->execute([$owner_id, $service_no, $rowBatch, $qty, $rowConfig, $status, $cost, $freight, $rec, $rowRemarks, $collected]);
+                    $createdId = (int) $pdo->lastInsertId();
+                    $createdItem = require_tenant_item($pdo, $createdId, $owner_id, true);
+                    record_audit_event($pdo, $owner_id, $currUser, 'inventory.import', 'inventory', $createdId, null, $createdItem);
                 }
                 $success++;
             }
@@ -969,11 +1017,17 @@ try {
         $p_hist = positive_int_input($_POST['p_hist'] ?? 999, '历史查看范围', 999);
         if (!in_array($p_hist, [3, 6, 999], true)) throw new HttpException("不支持的历史查看范围。");
 
+        $beforeAccount = null;
+        $accountAction = 'account.create';
+        $pdo->beginTransaction();
+        try {
         if ($sub_id) {
             $sub_id = positive_int_input($sub_id, '员工账号编号');
-            $stmtOwned = $pdo->prepare("SELECT id FROM users WHERE id = ? AND parent_id = ?");
+            $stmtOwned = $pdo->prepare("SELECT * FROM users WHERE id = ? AND parent_id = ? FOR UPDATE");
             $stmtOwned->execute([$sub_id, $user_id]);
-            if (!$stmtOwned->fetchColumn()) throw new HttpException("员工账号不存在或不属于当前主账号。");
+            $beforeAccount = $stmtOwned->fetch(PDO::FETCH_ASSOC);
+            if (!$beforeAccount) throw new HttpException("员工账号不存在或不属于当前主账号。");
+            $accountAction = 'account.update';
             $stmtCheck = $pdo->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
             $stmtCheck->execute([$sub_user, $sub_id]);
             if($stmtCheck->fetchColumn()) throw new HttpException("该用户名已被占用，请换一个！");
@@ -995,7 +1049,18 @@ try {
         $hash = password_hash($sub_pass, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("INSERT INTO users (username, password, role, parent_id, perm_finance, perm_edit, perm_delete, perm_download_tpl, perm_import, perm_add, perm_export, perm_tab_us, perm_tab_transit, perm_tab_cn, perm_tab_sold, perm_tab_parts, perm_tab_parts_sold, perm_tab_repair, perm_tab_repair_done, perm_history_view) VALUES (?, ?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         $stmt->execute([$sub_user, $hash, $user_id, $p_fin, $p_edt, $p_del, $p_dl, $p_imp, $p_add, $p_exp, $p_us, $p_transit, $p_cn, $p_sold, $p_parts, $p_parts_sold, $p_repair, $p_repair_done, $p_hist]);
+        $sub_id = (int) $pdo->lastInsertId();
     }
+        $stmtAfter = $pdo->prepare('SELECT * FROM users WHERE id = ?');
+        $stmtAfter->execute([(int) $sub_id]);
+        $afterAccount = $stmtAfter->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($afterAccount)) throw new RuntimeException('员工账号写入后无法读取。');
+        record_audit_event($pdo, $owner_id, $currUser, $accountAction, 'account', (int) $sub_id, is_array($beforeAccount) ? $beforeAccount : null, $afterAccount);
+        $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $error;
+        }
     echo json_encode(['status' => 'success']);
 }
 elseif ($action === 'verify_login') {
@@ -1037,9 +1102,20 @@ elseif ($action === 'verify_login') {
     elseif ($action === 'delete_sub_account') {
         if ($parent_id > 0) throw new HttpException("无权");
         $subId = positive_int_input($_POST['sub_id'] ?? null, '员工账号编号');
-        $stmt = $pdo->prepare("DELETE FROM users WHERE id = ? AND parent_id = ?");
-        $stmt->execute([$subId, $user_id]);
-        if ($stmt->rowCount() !== 1) throw new HttpException("员工账号不存在或不属于当前主账号。");
+        $pdo->beginTransaction();
+        try {
+            $before = $pdo->prepare('SELECT * FROM users WHERE id = ? AND parent_id = ? FOR UPDATE');
+            $before->execute([$subId, $user_id]);
+            $beforeAccount = $before->fetch(PDO::FETCH_ASSOC);
+            if (!$beforeAccount) throw new HttpException("员工账号不存在或不属于当前主账号。");
+            record_audit_event($pdo, $owner_id, $currUser, 'account.delete', 'account', $subId, $beforeAccount, null);
+            $stmt = $pdo->prepare("DELETE FROM users WHERE id = ? AND parent_id = ?");
+            $stmt->execute([$subId, $user_id]);
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $error;
+        }
         echo json_encode(['status' => 'success']);
     }
     else { echo json_encode(['status' => 'error', 'message' => '无效请求']); }

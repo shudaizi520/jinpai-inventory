@@ -10,6 +10,7 @@ const API_READ_ACTIONS = [
     'list_sub_accounts',
     'get_sec_questions',
     'get_registration_settings',
+    'list_audit_events',
 ];
 
 const API_KNOWN_ACTIONS = [
@@ -43,6 +44,8 @@ const API_KNOWN_ACTIONS = [
     'set_registration_mode',
     'create_invitation',
     'revoke_invitation',
+    'list_audit_events',
+    'restore_deleted_inventory',
 ];
 
 function enforce_api_action_method(string $action, string $method): void

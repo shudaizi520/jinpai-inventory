@@ -536,6 +536,7 @@ if ($is_initial_admin) {
                     <?php if(!$is_sub_account): ?>
                     <button onclick="switchSetTab('tabs')" id="setTab_tabs" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">🖥️ 仓库配置</button>
                     <button onclick="switchSetTab('sub')" id="setTab_sub" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">👥 员工管理</button>
+                    <button onclick="switchSetTab('audit')" id="setTab_audit" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">📋 操作日志</button>
                     <?php endif; ?>
                     <?php if($is_initial_admin): ?>
                     <button onclick="switchSetTab('registration')" id="setTab_registration" class="set-tab-btn w-full px-4 py-3 text-left text-[14px] font-bold rounded-xl transition-all text-slate-500 hover:bg-slate-100">🌐 注册管理</button>
@@ -684,6 +685,18 @@ if ($is_initial_admin) {
                                     <tbody id="subAccTable" class="divide-y divide-slate-100 bg-white"></tbody>
                                 </table>
                             </div>
+                        </div>
+                    </div>
+                    <div id="setPanel_audit" class="hidden">
+                        <div class="bg-white border border-slate-200 p-6 rounded-xl shadow-sm">
+                            <h4 class="font-black text-[15px] text-slate-800 mb-4 pb-3 border-b border-slate-100">📋 操作日志与删除恢复</h4>
+                            <div class="border border-slate-200 rounded-lg overflow-hidden">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-slate-50 text-slate-500 font-bold"><tr><th class="p-3">时间</th><th class="p-3">操作人</th><th class="p-3">操作</th><th class="p-3">服务编号</th><th class="p-3 text-center">恢复</th></tr></thead>
+                                    <tbody id="auditEventTable"></tbody>
+                                </table>
+                            </div>
+                            <div class="flex justify-end gap-2 mt-4"><button id="auditPrev" onclick="changeAuditPage(-1)" class="px-3 py-2 border rounded-lg text-sm">上一页</button><button id="auditNext" onclick="changeAuditPage(1)" class="px-3 py-2 border rounded-lg text-sm">下一页</button></div>
                         </div>
                     </div>
                     <?php if($is_initial_admin): ?>
@@ -1920,10 +1933,69 @@ if ($is_initial_admin) {
         document.getElementById('setPanel_pwd').classList.add('hidden');
         if (document.getElementById('setPanel_tabs')) document.getElementById('setPanel_tabs').classList.add('hidden');
         if (document.getElementById('setPanel_sub')) document.getElementById('setPanel_sub').classList.add('hidden');
+        if (document.getElementById('setPanel_audit')) document.getElementById('setPanel_audit').classList.add('hidden');
         if (document.getElementById('setPanel_registration')) document.getElementById('setPanel_registration').classList.add('hidden');
         document.getElementById('setPanel_' + t).classList.remove('hidden');
         if (t === 'sub') loadSubAccounts();
+        if (t === 'audit') { auditPage = 1; loadAuditEvents(); }
         if (t === 'registration') loadRegistrationSettings();
+    }
+
+    let auditPage = 1;
+    let auditHasMore = false;
+    async function loadAuditEvents() {
+        const table = document.getElementById('auditEventTable');
+        if (!table) return;
+        const response = await apiFetch(`${INVENTORY_API_URL}?action=list_audit_events&page=${auditPage}&limit=20`);
+        const result = await response.json();
+        if (result.status !== 'success') return alert(result.message || '操作日志读取失败');
+        auditHasMore = Boolean(result.data.has_more);
+        table.replaceChildren();
+        const labels = {'inventory.create':'新增库存','inventory.update':'编辑库存','inventory.status':'流转库存','inventory.delete':'删除库存','inventory.dispatch':'配件出库','inventory.import':'导入库存','inventory.restore':'恢复库存','account.create':'添加员工','account.update':'修改员工','account.delete':'删除员工'};
+        result.data.events.forEach(event => {
+            const row = document.createElement('tr');
+            row.className = 'border-t border-slate-100';
+            [event.created_at, event.actor_username, labels[event.action_type] || event.action_type, event.service_no || '-'].forEach(value => {
+                const cell = document.createElement('td');
+                cell.className = 'p-3 text-slate-600';
+                cell.textContent = String(value || '-');
+                row.appendChild(cell);
+            });
+            const actionCell = document.createElement('td');
+            actionCell.className = 'p-3 text-center';
+            if (event.can_restore) {
+                const button = document.createElement('button');
+                button.className = 'text-[#8B0000] font-bold hover:underline';
+                button.textContent = '恢复';
+                button.addEventListener('click', () => restoreAuditEvent(Number(event.id)));
+                actionCell.appendChild(button);
+            } else {
+                actionCell.textContent = '-';
+            }
+            row.appendChild(actionCell);
+            table.appendChild(row);
+        });
+        document.getElementById('auditPrev').disabled = auditPage <= 1;
+        document.getElementById('auditNext').disabled = !auditHasMore;
+    }
+
+    function changeAuditPage(delta) {
+        const next = auditPage + delta;
+        if (next < 1 || (delta > 0 && !auditHasMore)) return;
+        auditPage = next;
+        loadAuditEvents();
+    }
+
+    async function restoreAuditEvent(eventId) {
+        if (!(await sysConfirm('确定恢复这条已删除的库存记录吗？'))) return;
+        const body = new FormData();
+        body.append('action', 'restore_deleted_inventory');
+        body.append('event_id', String(eventId));
+        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body});
+        const result = await response.json();
+        if (result.status !== 'success') return alert(result.message || '恢复失败');
+        await loadAuditEvents();
+        loadData();
     }
 
     async function loadRegistrationSettings() {
