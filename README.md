@@ -107,7 +107,7 @@ docker image inspect --format '{{json .RepoDigests}}' "$(docker compose images -
 应用启动时自动执行兼容迁移。需要回滚程序时，把下面的摘要替换为更新前保存的值；命令会持久修改 `.env`，后续 Compose 操作仍会使用同一个回滚版本：
 
 ```bash
-rollback_image='ghcr.io/shudaizi520/jinpai-inventory@sha256:<更新前记录的摘要>'
+rollback_image='<粘贴上面第一条命令输出的完整值>'
 sed -i "s|^APP_IMAGE=.*|APP_IMAGE=${rollback_image}|" .env
 docker compose pull
 docker compose up -d

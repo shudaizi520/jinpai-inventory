@@ -51,7 +51,10 @@ grep -q 'linux/amd64,linux/arm64' .github/workflows/ci.yml
 grep -q 'ghcr.io/shudaizi520/jinpai-inventory' .github/workflows/ci.yml
 grep -q 'cancel-in-progress:' .github/workflows/ci.yml
 grep -q 'Verify current main revision' .github/workflows/ci.yml
+grep -q 'Refuse to overwrite existing source tag' .github/workflows/ci.yml
+grep -q 'SOURCE_TAG: ghcr.io/shudaizi520/jinpai-inventory:sha-' .github/workflows/ci.yml
 grep -q 'format=long' .github/workflows/ci.yml
+grep -q "enable=.*github.ref == 'refs/heads/main'" .github/workflows/ci.yml
 grep -q 'Verify anonymous multi-platform pull' .github/workflows/ci.yml
 grep -q 'docker logout ghcr.io' .github/workflows/ci.yml
 grep -q 'steps.build.outputs.digest' .github/workflows/ci.yml
@@ -67,6 +70,8 @@ fi
 for topic in 'RepoDigests' 'sha256:' 'TrueNAS'; do
     grep -q "$topic" README.md || { echo "README is missing digest rollback topic: $topic" >&2; exit 1; }
 done
+
+grep -q "rollback_image='<粘贴上面第一条命令输出的完整值>'" README.md
 
 if git ls-files | grep -Eq '(^|/)\.env$|\.(sql|sql\.gz|sqlite|db|rar)$'; then
     echo 'Tracked secret/data/archive file detected.' >&2
