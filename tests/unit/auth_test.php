@@ -23,6 +23,7 @@ test('authenticated session setup rotates the identifier and stores the current 
         'username' => 'worker',
         'role' => 'user',
         'parent_id' => 4,
+        'session_version' => 7,
     ], function (bool $deleteOld) use (&$rotated): bool {
         $rotated = $deleteOld;
         return true;
@@ -32,6 +33,28 @@ test('authenticated session setup rotates the identifier and stores the current 
     assert_true($_SESSION['is_logged_in']);
     assert_same(9, (int) $_SESSION['user_id']);
     assert_same(4, (int) $_SESSION['parent_id']);
+    assert_same(7, (int) $_SESSION['session_version']);
+});
+
+test('current session validation accepts only the matching database version', function (): void {
+    assert_true(function_exists('validate_authenticated_session_user'), 'validate_authenticated_session_user() is missing');
+    $_SESSION = ['is_logged_in' => true, 'user_id' => 9, 'session_version' => 7];
+    $user = ['id' => 9, 'username' => 'worker', 'session_version' => 7];
+    assert_same($user, validate_authenticated_session_user($user));
+
+    $_SESSION = ['is_logged_in' => true, 'user_id' => 9, 'session_version' => 7];
+    try {
+        validate_authenticated_session_user(['id' => 9, 'session_version' => 8]);
+        throw new TestFailure('Expected stale session to be rejected');
+    } catch (HttpException $exception) {
+        assert_same('登录状态失效', $exception->getMessage());
+        assert_same(401, $exception->statusCode());
+        assert_same([], $_SESSION);
+    }
+
+    $_SESSION = ['is_logged_in' => true, 'user_id' => 9, 'session_version' => 7];
+    assert_throws(fn () => validate_authenticated_session_user(null), HttpException::class);
+    assert_same([], $_SESSION);
 });
 
 test('logout clears all server-side session values', function (): void {

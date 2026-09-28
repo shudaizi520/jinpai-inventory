@@ -77,8 +77,51 @@ function establish_authenticated_session(array $user, ?callable $regenerate = nu
     $_SESSION['username'] = (string) $user['username'];
     $_SESSION['role'] = (string) $user['role'];
     $_SESSION['parent_id'] = (int) ($user['parent_id'] ?? 0);
+    $_SESSION['session_version'] = (int) ($user['session_version'] ?? 1);
     $_SESSION['last_active_time'] = time();
     $_SESSION['_csrf_token'] = bin2hex(random_bytes(32));
+}
+
+function validate_authenticated_session_user(?array $user): array
+{
+    $valid = ($_SESSION['is_logged_in'] ?? false) === true
+        && (int) ($_SESSION['user_id'] ?? 0) > 0
+        && $user !== null
+        && (int) ($user['id'] ?? 0) === (int) $_SESSION['user_id']
+        && (int) ($user['session_version'] ?? 0) === (int) ($_SESSION['session_version'] ?? 0);
+    if (!$valid) {
+        perform_logout();
+        throw new HttpException('登录状态失效', 401);
+    }
+    return $user;
+}
+
+function require_current_session_user(PDO $pdo): array
+{
+    $userId = (int) ($_SESSION['user_id'] ?? 0);
+    $user = null;
+    if ($userId > 0) {
+        $statement = $pdo->prepare('SELECT * FROM users WHERE id = ?');
+        $statement->execute([$userId]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        $user = is_array($row) ? $row : null;
+    }
+    return validate_authenticated_session_user($user);
+}
+
+function advance_session_version(PDO $pdo, int $userId): int
+{
+    if ($userId < 1) {
+        throw new InvalidArgumentException('账号编号无效。');
+    }
+    $statement = $pdo->prepare('UPDATE users SET session_version = session_version + 1 WHERE id = ?');
+    $statement->execute([$userId]);
+    if ($statement->rowCount() !== 1) {
+        throw new RuntimeException('账号不存在。');
+    }
+    $read = $pdo->prepare('SELECT session_version FROM users WHERE id = ?');
+    $read->execute([$userId]);
+    return (int) $read->fetchColumn();
 }
 
 function perform_logout(bool $destroySession = true): void

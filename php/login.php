@@ -82,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['api_action'])) {
             ] : [];
 
             if ($user && array_reduce($checks, fn (bool $valid, array $check): bool => $valid && $check['valid'], true)) {
-                $stmt = $pdo->prepare("UPDATE users SET password = ?, sec_a1 = ?, sec_a2 = ?, sec_a3 = ? WHERE id = ?");
+                $stmt = $pdo->prepare("UPDATE users SET password = ?, sec_a1 = ?, sec_a2 = ?, sec_a3 = ?, session_version = session_version + 1 WHERE id = ?");
                 $stmt->execute([
                     password_hash($newPassword, PASSWORD_DEFAULT),
                     $checks[0]['upgrade_hash'] ?? $user['sec_a1'],

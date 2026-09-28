@@ -18,15 +18,12 @@ try {
     json_response(['status' => 'error', 'message' => $exception->getMessage()], $exception->statusCode());
 }
 
-$user_id = $_SESSION['user_id'] ?? 0;
-if (!$user_id) { json_response(['status' => 'error', 'message' => '登录状态失效'], 401); }
-
-// --- 【核心修复】：消除幽灵会话，每次请求实时查询数据库验证最新权限 ---
-$stmtUser = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmtUser->execute([$user_id]);
-$currUser = $stmtUser->fetch(PDO::FETCH_ASSOC);
-
-if (!$currUser) { json_response(['status' => 'error', 'message' => '登录状态失效'], 401); }
+try {
+    $currUser = require_current_session_user($pdo);
+} catch (HttpException $exception) {
+    json_response(['status' => 'error', 'message' => $exception->getMessage()], $exception->statusCode());
+}
+$user_id = (int) $currUser['id'];
 
 $parent_id = (int) ($currUser['parent_id'] ?? 0);
 $owner_id = tenant_id($currUser);
@@ -862,8 +859,11 @@ try {
         $hash_a3 = password_hash($a3, PASSWORD_DEFAULT);
 
         // --- 注意：execute 里面存入的是加密后的 $hash_a1 等变量 ---
-        $stmt = $pdo->prepare("UPDATE users SET sec_q1=?, sec_a1=?, sec_q2=?, sec_a2=?, sec_q3=?, sec_a3=? WHERE id=?");
+        $stmt = $pdo->prepare("UPDATE users SET sec_q1=?, sec_a1=?, sec_q2=?, sec_a2=?, sec_q3=?, sec_a3=?, session_version=session_version+1 WHERE id=?");
         $stmt->execute([$q1, $hash_a1, $q2, $hash_a2, $q3, $hash_a3, $user_id]);
+        $stmtVersion = $pdo->prepare('SELECT session_version FROM users WHERE id = ?');
+        $stmtVersion->execute([$user_id]);
+        $_SESSION['session_version'] = (int) $stmtVersion->fetchColumn();
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'change_my_password') {
@@ -876,8 +876,17 @@ try {
         $hash = (string) $stmt->fetchColumn();
         if (!verify_stored_secret($old_pwd, $hash)['valid']) throw new HttpException("原密码错误！");
         $new_hash = password_hash($new_pwd, PASSWORD_DEFAULT);
-        $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
-        $stmt->execute([$new_hash, $user_id]);
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("UPDATE users SET password = ? WHERE id = ?");
+            $stmt->execute([$new_hash, $user_id]);
+            $newSessionVersion = advance_session_version($pdo, $user_id);
+            $pdo->commit();
+            $_SESSION['session_version'] = $newSessionVersion;
+        } catch (Throwable $exception) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $exception;
+        }
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'set_lock') {
@@ -928,8 +937,11 @@ try {
         $l_us = isset($_POST['l_us']) ? 1 : 0; $l_transit = isset($_POST['l_transit']) ? 1 : 0; $l_cn = isset($_POST['l_cn']) ? 1 : 0; $l_sold = isset($_POST['l_sold']) ? 1 : 0; $l_repair = isset($_POST['l_repair']) ? 1 : 0; $l_repair_done = isset($_POST['l_repair_done']) ? 1 : 0;
         $l_parts = isset($_POST['l_parts']) ? 1 : 0; $l_parts_sold = isset($_POST['l_parts_sold']) ? 1 : 0;
 
-        $stmt = $pdo->prepare("UPDATE users SET perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_tab_parts=?, perm_tab_parts_sold=?, lock_tab_us=?, lock_tab_transit=?, lock_tab_cn=?, lock_tab_sold=?, lock_tab_repair=?, lock_tab_repair_done=?, lock_tab_parts=?, lock_tab_parts_sold=? WHERE id=?");
+        $stmt = $pdo->prepare("UPDATE users SET perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_tab_parts=?, perm_tab_parts_sold=?, lock_tab_us=?, lock_tab_transit=?, lock_tab_cn=?, lock_tab_sold=?, lock_tab_repair=?, lock_tab_repair_done=?, lock_tab_parts=?, lock_tab_parts_sold=?, session_version=session_version+1 WHERE id=?");
         $stmt->execute([$p_us, $p_transit, $p_cn, $p_sold, $p_repair, $p_repair_done, $p_parts, $p_parts_sold, $l_us, $l_transit, $l_cn, $l_sold, $l_repair, $l_repair_done, $l_parts, $l_parts_sold, $user_id]);
+        $stmtVersion = $pdo->prepare('SELECT session_version FROM users WHERE id = ?');
+        $stmtVersion->execute([$user_id]);
+        $_SESSION['session_version'] = (int) $stmtVersion->fetchColumn();
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'delete_my_account') {
@@ -1005,10 +1017,10 @@ try {
 
             if (!empty($sub_pass)) {
                 $hash = password_hash($sub_pass, PASSWORD_DEFAULT);
-                $stmt = $pdo->prepare("UPDATE users SET username=?, perm_finance=?, perm_edit=?, perm_delete=?, perm_download_tpl=?, perm_import=?, perm_add=?, perm_export=?, perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_parts=?, perm_tab_parts_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_history_view=?, password=? WHERE id=? AND parent_id=?");
+                $stmt = $pdo->prepare("UPDATE users SET username=?, perm_finance=?, perm_edit=?, perm_delete=?, perm_download_tpl=?, perm_import=?, perm_add=?, perm_export=?, perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_parts=?, perm_tab_parts_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_history_view=?, password=?, session_version=session_version+1 WHERE id=? AND parent_id=?");
                 $stmt->execute([$sub_user, $p_fin, $p_edt, $p_del, $p_dl, $p_imp, $p_add, $p_exp, $p_us, $p_transit, $p_cn, $p_sold, $p_parts, $p_parts_sold, $p_repair, $p_repair_done, $p_hist, $hash, $sub_id, $user_id]);
             } else {
-                $stmt = $pdo->prepare("UPDATE users SET username=?, perm_finance=?, perm_edit=?, perm_delete=?, perm_download_tpl=?, perm_import=?, perm_add=?, perm_export=?, perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_parts=?, perm_tab_parts_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_history_view=? WHERE id=? AND parent_id=?");
+                $stmt = $pdo->prepare("UPDATE users SET username=?, perm_finance=?, perm_edit=?, perm_delete=?, perm_download_tpl=?, perm_import=?, perm_add=?, perm_export=?, perm_tab_us=?, perm_tab_transit=?, perm_tab_cn=?, perm_tab_sold=?, perm_tab_parts=?, perm_tab_parts_sold=?, perm_tab_repair=?, perm_tab_repair_done=?, perm_history_view=?, session_version=session_version+1 WHERE id=? AND parent_id=?");
                 $stmt->execute([$sub_user, $p_fin, $p_edt, $p_del, $p_dl, $p_imp, $p_add, $p_exp, $p_us, $p_transit, $p_cn, $p_sold, $p_parts, $p_parts_sold, $p_repair, $p_repair_done, $p_hist, $sub_id, $user_id]);
             }
         } else {

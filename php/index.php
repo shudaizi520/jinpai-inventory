@@ -4,17 +4,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/lib/auth.php';
 
-if (!isset($_SESSION['is_logged_in']) || $_SESSION['is_logged_in'] !== true) {
-    header('Location: login.php');
-    exit;
-}
-
-$stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$_SESSION['user_id']]);
-$currentUser = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$currentUser) {
-    perform_logout();
+try {
+    $currentUser = require_current_session_user($pdo);
+} catch (HttpException) {
     header('Location: login.php');
     exit;
 }
