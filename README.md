@@ -14,10 +14,13 @@
 ## 多人协作与数据安全
 
 - 页面每 10 秒检查一次当前主账号的轻量库存修订号；只有发生变化时才重新加载数据，不会反复扫描整张库存表。
+- 更新版本只在数据加载成功后记录；网络失败会在下一轮重试，旧请求不会覆盖新仓库或新页面。编辑、锁屏和临时财务授权期间暂停静默刷新。
 - 每条库存都有独立版本。两名成员同时编辑时，后提交的旧版本会收到“记录已被其他成员修改，请刷新后重试”的版本冲突提示，不会静默覆盖先提交的数据；批量操作只要有一条过期就会整批回滚。
 - 主账号可在“系统设置 → 操作日志”查看本团队的库存和员工账号操作。删除库存会保留不含登录密码、密保答案、会话或数据库密码的业务快照，可在没有服务编号冲突时恢复一次。
 - 修改员工密码或权限后，该员工已经登录的旧会话会被强制退出，主账号自己的会话不受影响。主账号修改自己的密码时只保留当前操作会话；通过密保找回密码会使全部旧会话失效。
 - 所有日志、库存修订号和员工关系都按主账号租户隔离；员工不能查看操作日志，独立主账号之间也不能互相读取或恢复数据。
+- 流转、退货、编辑或导入涉及财务锁定仓库时，需要验证财务密码。流转弹窗只临时授权这次操作，完成后自动重新锁定；没有财务权限的员工仍不能查看财务字段。
+- 主流程电脑仓库不能有重复服务编号，单条及批量流转都执行检查。配件库存导入只匹配同状态记录，不会将已售配件改回库存；同编号匹配多条记录时，整次导入会取消，请在软件中逐条编辑。
 
 这些机制只增加少量按主键查询和单行修订号写入，适合 NAS 上的个人和小团队使用。正常空闲时的 10 秒同步检查是常量级查询，不会遍历库存表。
 
@@ -164,12 +167,15 @@ docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```bash
 find php tests scripts -name '*.php' -print0 | xargs -0 -n1 php -l
 php tests/run.php
+node tests/browser/refresh_test.cjs
+node tests/browser/financial_transition_test.cjs
+node tests/browser/masked_save_test.cjs
 sh tests/docker/compose_test.sh
 sh tests/release/release_test.sh
 sh tests/release/maintenance_scripts_test.sh
 ```
 
-数据库集成测试需要设置 `TEST_DB_DSN`、`TEST_DB_USER` 和 `TEST_DB_PASSWORD`。安全问题请阅读 [SECURITY.md](SECURITY.md)。
+浏览器逻辑测试需要 Node.js 20+，只模拟浏览器和网络边界，不需要安装 npm 依赖。数据库集成测试需要设置 `TEST_DB_DSN`、`TEST_DB_USER` 和 `TEST_DB_PASSWORD`，仅使用隔离测试数据库（测试会创建和删除临时数据库，不能连接生产库）。安全问题请阅读 [SECURITY.md](SECURITY.md)。
 
 ## 许可证
 

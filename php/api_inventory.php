@@ -276,25 +276,12 @@ try {
         foreach ($batchItems as $batchItem) {
             require_status_access((string) $batchItem['status'], $currUser, $ownerData);
             require_expected_version($batchItem, $versions[(int) $batchItem['id']]);
+            require_financial_status_transition($ownerData, (string) $batchItem['status'], $new_status,
+                ($_SESSION['finance_unlocked_' . $user_id] ?? false) === true);
         }
+        require_unique_main_flow_transition($pdo, $owner_id, $ids, $new_status);
         if ($ids !== []) {
             $inQuery = implode(',', array_fill(0, count($ids), '?'));
-
-            // --- 核心修复：批量流转锁校验 ---
-            $stmtStatus = $pdo->prepare("SELECT DISTINCT status FROM inventory_items WHERE id IN ($inQuery) AND user_id = ?");
-            $stmtStatus->execute(array_merge($ids, [$owner_id]));
-            $batch_statuses = $stmtStatus->fetchAll(PDO::FETCH_COLUMN);
-            $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
-
-            foreach ($batch_statuses as $batch_status) {
-                $source_lock = $statusLockMap[$batch_status] ?? '';
-                $target_lock = $statusLockMap[$new_status] ?? '';
-                // 彻底放开：批量流转和退回不再受财务锁限制
-//                if ((($ownerData[$source_lock] ?? 0) == 1 || ($ownerData[$target_lock] ?? 0) == 1) && !$unlocked) {
-//                    throw new HttpException("安全拦截：选定批次涉及已锁定财务的仓库，请先解锁后再流转！");
-//                }
-            }
-            // ------------------------------------------------
 
             // 防绕过：强制拦截无资料设备进入已售仓
             if (in_array($new_status, ['SOLD', 'PARTS_SOLD'])) {
@@ -519,8 +506,9 @@ try {
         $expectedVersion = $id !== ''
             ? positive_int_input($_POST['row_version'] ?? null, '记录版本')
             : null;
+        $preserveFinance = ($_POST['preserve_finance'] ?? '') === '1';
 
-        with_tenant_inventory_mutation($pdo, $owner_id, function () use ($pdo, $owner_id, $id, $expectedVersion, $new_status, $service_no, $currUser, $ownerData, $user_id, $perm_finance, $input, $qty): void {
+        with_tenant_inventory_mutation($pdo, $owner_id, function () use ($pdo, $owner_id, $id, $expectedVersion, $new_status, $service_no, $currUser, $ownerData, $user_id, $perm_finance, $input, $qty, $preserveFinance): void {
 
             if (!in_array($new_status, ['REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD'])) {
                 if ($id) {
@@ -542,13 +530,15 @@ try {
 
                 // 重新校验财务权限
                 $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
+                require_financial_status_transition($ownerData, (string) $item['status'], $new_status, $unlocked);
                 $can_edit_finance = can_manage_financial_values(
                     $perm_finance,
                     $ownerData,
                     [(string) $item['status'], $new_status],
                     $unlocked
                 );
-                $financial = financial_values_for_write($input, $item, $can_edit_finance);
+                // A retry may unlock a transition, but must not turn masked form values into financial edits.
+                $financial = financial_values_for_write($input, $item, $can_edit_finance && !$preserveFinance);
                 $cost_rmb = $financial['cost_rmb'];
                 $freight = $financial['freight'];
                 $collected = $financial['collected_amount'];
@@ -592,20 +582,9 @@ try {
         require_expected_version($item, $expectedVersion);
         require_status_access((string) $item['status'], $currUser, $ownerData);
 
-        // --- 核心修复：流转时校验源仓库和目标仓库的保险箱锁 ---
-        $stmtOld = $pdo->prepare("SELECT status FROM inventory_items WHERE id = ? AND user_id = ?");
-        $stmtOld->execute([$id, $owner_id]);
-        $old_status = $stmtOld->fetchColumn();
-        if ($old_status) {
-            $source_lock = $statusLockMap[$old_status] ?? '';
-            $target_lock = $statusLockMap[$new_status] ?? '';
-            $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
-            // 彻底放开：单条流转和退回不再受财务锁限制
-//            if ((($ownerData[$source_lock] ?? 0) == 1 || ($ownerData[$target_lock] ?? 0) == 1) && !$unlocked) {
-//                throw new HttpException("安全拦截：涉及锁定仓库的流转操作，必须先验证财务密码解锁！");
-//            }
-        }
-        // ------------------------------------------------
+        require_financial_status_transition($ownerData, (string) $item['status'], $new_status,
+            ($_SESSION['finance_unlocked_' . $user_id] ?? false) === true);
+        require_unique_main_flow_transition($pdo, $owner_id, [$id], $new_status);
 
         // --- 新增：安全拦截，防止无资料强制流转至已售 ---
         if (in_array($new_status, ['SOLD', 'PARTS_SOLD'])) {
@@ -683,18 +662,23 @@ try {
                     }
                 }
 
-                // --- 修复：双向流转必须合并查找，防止误判为新设备导致克隆双胞胎 ---
+                // Parts sales are separate history rows; never use a sale as a stock import target.
+                // More than one candidate is ambiguous and must not be silently overwritten.
                 if (in_array($status, ['REPAIR', 'REPAIR_DONE'])) {
-                    $stmtCheck = $pdo->prepare("SELECT * FROM inventory_items WHERE service_no = ? AND user_id = ? AND status IN ('REPAIR', 'REPAIR_DONE') ORDER BY id DESC LIMIT 1");
+                    $stmtCheck = $pdo->prepare("SELECT * FROM inventory_items WHERE service_no = ? AND user_id = ? AND status IN ('REPAIR', 'REPAIR_DONE') LIMIT 2");
                     $stmtCheck->execute([$service_no, $owner_id]);
                 } elseif (in_array($status, ['PARTS', 'PARTS_SOLD'])) {
-                    $stmtCheck = $pdo->prepare("SELECT * FROM inventory_items WHERE service_no = ? AND user_id = ? AND status IN ('PARTS', 'PARTS_SOLD') ORDER BY id DESC LIMIT 1");
-                    $stmtCheck->execute([$service_no, $owner_id]);
+                    $stmtCheck = $pdo->prepare("SELECT * FROM inventory_items WHERE service_no = ? AND user_id = ? AND status = ? LIMIT 2");
+                    $stmtCheck->execute([$service_no, $owner_id, $status]);
                 } else {
-                    $stmtCheck = $pdo->prepare("SELECT * FROM inventory_items WHERE service_no = ? AND user_id = ? AND status NOT IN ('REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD')");
+                    $stmtCheck = $pdo->prepare("SELECT * FROM inventory_items WHERE service_no = ? AND user_id = ? AND status NOT IN ('REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD') LIMIT 2");
                     $stmtCheck->execute([$service_no, $owner_id]);
                 }
-                $existsData = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+                $candidates = $stmtCheck->fetchAll(PDO::FETCH_ASSOC);
+                if (count($candidates) > 1) {
+                    throw new HttpException("导入失败：编号【{$service_no}】匹配多条记录，请在软件中逐条编辑，避免覆盖错误记录。", 409);
+                }
+                $existsData = $candidates[0] ?? null;
                 if ($existsData) {
                     require_status_access((string) $existsData['status'], $currUser, $ownerData);
                 }
@@ -705,6 +689,9 @@ try {
                 $is_tab_locked = ($target_lock && ($ownerData[$target_lock] ?? 0) == 1) || ($source_lock && ($ownerData[$source_lock] ?? 0) == 1);
 
                 $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
+                if ($existsData) {
+                    require_financial_status_transition($ownerData, (string) $existsData['status'], $status, $unlocked);
+                }
                 $can_edit_finance = ($perm_finance == 1) && !($is_tab_locked && !$unlocked);
 
                 // --- 修复：提取旧数量用于等比缩放，防止历史账本被暴跌稀释 ---
@@ -1149,7 +1136,9 @@ elseif ($action === 'verify_login') {
     else { echo json_encode(['status' => 'error', 'message' => '无效请求']); }
 } catch (HttpException $e) {
     http_response_code($e->statusCode());
-    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    $payload = ['status' => 'error', 'message' => $e->getMessage()];
+    if ($e->errorCode() !== null) $payload['code'] = $e->errorCode();
+    echo json_encode($payload);
 } catch (PDOException $e) {
     $requestId = safe_log($e);
     http_response_code(500);

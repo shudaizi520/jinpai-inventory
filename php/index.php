@@ -999,6 +999,18 @@ if ($is_initial_admin) {
 
     // ⚡ 性能提升：新增全局变量，记录最后一次数据库的数据时间戳
     let lastKnownUpdate = null;
+    let inventoryLoadGeneration = 0;
+    let inventoryManualLoading = false;
+    let silentRefreshRunning = false;
+    let financialMutationInFlight = false;
+
+    function inventoryViewKey() {
+        return JSON.stringify([currentTab, currentSearchTerm, currentDateFilter, currentPage, isFinanceUnlocked]);
+    }
+
+    function inventoryScreenLocked() {
+        return sessionStorage.getItem('sys_tab_locked') === '1' || localStorage.getItem('sys_global_locked') === '1';
+    }
 
     function rowVersionFor(id) {
         const row = currentData.find(item => Number(item.id) === Number(id));
@@ -1074,8 +1086,8 @@ if ($is_initial_admin) {
     let currentLockCallback = null;
     let currentLockFailCallback = null; // --- 新增：记录用户取消或验证失败的操作 ---
 
-    function verifyLock(callback, failCallback = null) {
-        if(PERM_FINANCE === 0 && !['SOLD', 'REPAIR', 'REPAIR_DONE', 'PARTS_SOLD'].includes(currentTab)) {
+    function verifyLock(callback, failCallback = null, forInventoryTransition = false) {
+        if(!forInventoryTransition && PERM_FINANCE === 0 && !['SOLD', 'REPAIR', 'REPAIR_DONE', 'PARTS_SOLD'].includes(currentTab)) {
             return alert('您没有查看财务数据的权限！');
         }
         currentLockCallback = callback;
@@ -1087,6 +1099,47 @@ if ($is_initial_admin) {
             document.getElementById('verify_lock_input').focus();
         }, 10);
     }
+
+    // Inventory mutation unlock/retry
+    async function submitInventoryMutation(input, init) {
+        const response = await apiFetch(input, init);
+        if (response.status !== 403) return response;
+        const result = await response.clone().json();
+        if (result.code !== 'FINANCIAL_LOCKED') return response;
+        if (financialMutationInFlight) return response;
+
+        // Authorize this operation, without enabling financial display or weakening permissions.
+        return new Promise((resolve, reject) => {
+            financialMutationInFlight = true;
+            verifyLock(async () => {
+                let retryResponse = response;
+                let retryError = null;
+                try {
+                    if (!inventoryScreenLocked()) retryResponse = await apiFetch(input, init);
+                } catch (error) {
+                    retryError = error;
+                }
+                try {
+                    const relocked = await relockFinance();
+                    const payload = await relocked.json();
+                    if (!relocked.ok || payload.status !== 'success') throw new Error('财务锁恢复失败，请重新加载页面。');
+                } catch (error) {
+                    financialMutationInFlight = false;
+                    window.location.reload();
+                    reject(error);
+                    return;
+                }
+                isFinanceUnlocked = false;
+                financialMutationInFlight = false;
+                if (retryError) reject(retryError);
+                else resolve(retryResponse);
+            }, () => {
+                financialMutationInFlight = false;
+                resolve(response);
+            }, true);
+        });
+    }
+    // End inventory mutation unlock/retry
 
     function closeVerifyLockModal(isCancel = true) {
         document.getElementById('verifyLockContent').classList.remove('modal-enter-active');
@@ -1278,10 +1331,23 @@ if ($is_initial_admin) {
 
     async function loadData() {
         if(currentTab === 'NONE') return;
+        const generation = ++inventoryLoadGeneration;
+        inventoryManualLoading = true;
+        const viewKey = inventoryViewKey();
+        lastKnownUpdate = null;
         const tb = document.getElementById('tableBody');
         tb.innerHTML = '<tr><td colspan="14" class="text-center py-16 text-slate-400 font-medium">正在与服务器同步检索...</td></tr>';
 
         try {
+            // Probe before reading: a later commit must remain visible to the next poll.
+            // A failed probe does not prevent manual loading, but keeps polling eligible.
+            let loadedRevision = null;
+            try {
+                const checkRes = await apiFetch(`${INVENTORY_API_URL}?action=check_update`);
+                const checkJson = await checkRes.json();
+                if (checkJson.status === 'success') loadedRevision = checkJson.last_update;
+            } catch (e) {}
+            if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
             const params = new URLSearchParams({
                 action: 'list',
                 status: currentTab,
@@ -1293,6 +1359,7 @@ if ($is_initial_admin) {
             });
             const r = await apiFetch(`${INVENTORY_API_URL}?${params.toString()}`);
             const j = await r.json();
+            if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
 
             if (j.status === 'success') {
                 currentData = j.data;
@@ -1300,11 +1367,16 @@ if ($is_initial_admin) {
                 summaryData = j.summary;
                 renderSummaryPanels();
                 renderTable();
+                if (generation === inventoryLoadGeneration && viewKey === inventoryViewKey()) lastKnownUpdate = loadedRevision;
             } else {
                 tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">${escapeHTML(j.message || '请求失败')}</td></tr>`;
             }
         } catch (e) {
-            tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">网络异常或环境配置错误，请求未能成功</td></tr>`;
+            if (generation === inventoryLoadGeneration && viewKey === inventoryViewKey() && !inventoryScreenLocked()) {
+                tb.innerHTML = `<tr><td colspan="14" class="text-center py-16 text-red-500">网络异常或环境配置错误，请求未能成功</td></tr>`;
+            }
+        } finally {
+            if (generation === inventoryLoadGeneration) inventoryManualLoading = false;
         }
     }
 
@@ -1608,7 +1680,7 @@ if ($is_initial_admin) {
         fd.append('versions', versionMapFor(ids));
         fd.append('status', ns);
 
-        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        const response = await submitInventoryMutation(INVENTORY_API_URL, {method: 'POST', body: fd});
         const result = await response.json();
         if (result.status !== 'success') return alert(result.message || '批量流转失败，请刷新后重试。');
         const sa = document.getElementById('selectAllCheckbox');
@@ -1662,7 +1734,7 @@ if ($is_initial_admin) {
         fd.append('id', id);
         fd.append('row_version', rowVersionFor(id));
         fd.append('status', ns);
-        const response = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+        const response = await submitInventoryMutation(INVENTORY_API_URL, {method: 'POST', body: fd});
         const result = await response.json();
         if (result.status !== 'success') return alert(result.message || '流转失败，请刷新后重试。');
         loadData();
@@ -1805,6 +1877,10 @@ if ($is_initial_admin) {
 
         try {
             const fd = new FormData(document.getElementById('itemForm'));
+            const existingItem = currentData.find(item => Number(item.id) === Number(fd.get('id')));
+            const unavailableFinance = existingItem && ['cost_rmb', 'freight', 'collected_amount']
+                .some(field => !Number.isFinite(Number(existingItem[field])));
+            fd.set('preserve_finance', unavailableFinance ? '1' : '0');
             const qty = parseInt(fd.get('quantity')) || 1;
             const uc = parseFloat(fd.get('unit_cost')) || 0;
             const uf = parseFloat(fd.get('unit_freight')) || 0;
@@ -1816,7 +1892,7 @@ if ($is_initial_admin) {
             fd.append('action', 'save');
             fd.append('unlocked', isFinanceUnlocked ? '1' : '0');
 
-            const r = await apiFetch(INVENTORY_API_URL, {method: 'POST', body: fd});
+            const r = await submitInventoryMutation(INVENTORY_API_URL, {method: 'POST', body: fd});
             const j = await r.json();
 
             if (j.status === 'success') {
@@ -2478,7 +2554,7 @@ if ($is_initial_admin) {
                 const j = XLSX.utils.sheet_to_json(ws, {defval: ""});
                 if (j.length === 0) return;
                 const url = `${INVENTORY_API_URL}?action=import&unlocked=${isFinanceUnlocked ? '1' : '0'}`;
-                const r = await apiFetch(url, {
+                const r = await submitInventoryMutation(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(j)
@@ -2559,15 +2635,14 @@ if ($is_initial_admin) {
     }
 
     // === ⚡ 性能版静默刷新 (极低服务器开销) ===
-    async function silentRefresh() {
-        if(currentTab === 'NONE') return;
+    function canSilentlyRefresh() {
+        if(currentTab === 'NONE' || inventoryManualLoading || financialMutationInFlight) return false;
 
         // 🛡️ 核心防御：离开座位超过 60 秒，或屏幕已锁定，立刻停止偷偷刷新
-        let isLocked = sessionStorage.getItem('sys_tab_locked') === '1' || localStorage.getItem('sys_global_locked') === '1';
-        if (isLocked || (Date.now() - tabLastActive > 60000)) return;
+        if (inventoryScreenLocked() || (Date.now() - tabLastActive > 60000)) return false;
 
         const itemModal = document.getElementById('itemModal');
-        if (!itemModal) return;
+        if (!itemModal) return false;
 
         const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
         const isItemModalOpen = !itemModal.classList.contains('hidden');
@@ -2576,18 +2651,24 @@ if ($is_initial_admin) {
         const dispatchModal = document.getElementById('dispatchModal');
         const isDispatchModalOpen = dispatchModal && !dispatchModal.classList.contains('hidden');
 
-        if (checkedCount > 0 || isItemModalOpen || isBatchModalOpen || isSetModalOpen || isDispatchModalOpen) return;
+        return !(checkedCount > 0 || isItemModalOpen || isBatchModalOpen || isSetModalOpen || isDispatchModalOpen);
+    }
+
+    async function silentRefresh() {
+        if (silentRefreshRunning || !canSilentlyRefresh()) return;
+        silentRefreshRunning = true;
+        const generation = inventoryLoadGeneration;
+        const viewKey = inventoryViewKey();
 
         try {
             // ⚡ 性能核心：先用轻量级探针查询数据库有没有发生变动
             const checkRes = await apiFetch(`${INVENTORY_API_URL}?action=check_update`);
             const checkJson = await checkRes.json();
+            if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || !canSilentlyRefresh()) return;
 
             if (checkJson.status === 'success') {
                 // 如果是第一次运行，或者别人操作导致时间戳变了，才去拉取全量数据
                 if (lastKnownUpdate === null || checkJson.last_update !== lastKnownUpdate) {
-                    lastKnownUpdate = checkJson.last_update;
-
                     const params = new URLSearchParams({
                         action: 'list',
                         status: currentTab,
@@ -2600,6 +2681,7 @@ if ($is_initial_admin) {
 
                     const r = await apiFetch(`${INVENTORY_API_URL}?${params.toString()}`);
                     const j = await r.json();
+                    if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || !canSilentlyRefresh()) return;
 
                     if (j.status === 'success') {
                         currentData = j.data;
@@ -2607,21 +2689,15 @@ if ($is_initial_admin) {
                         summaryData = j.summary;
                         renderSummaryPanels();
                         renderTable();
+                        if (generation === inventoryLoadGeneration && viewKey === inventoryViewKey()) lastKnownUpdate = checkJson.last_update;
                     }
                 }
             }
-        } catch (e) {}
-    }
-
-    // 配合探针机制，在手动加载数据后同步更新一下时间戳
-    const originalLoadData = loadData;
-    loadData = async function() {
-        await originalLoadData();
-        try {
-            const r = await apiFetch(`${INVENTORY_API_URL}?action=check_update`);
-            const j = await r.json();
-            if (j.status === 'success') lastKnownUpdate = j.last_update;
-        } catch(e) {}
+        } catch (e) {
+            // Keep the previous revision so a failed request is retried on the next tick.
+        } finally {
+            silentRefreshRunning = false;
+        }
     }
 
     setInterval(silentRefresh, 10000); // 这是原有的代码

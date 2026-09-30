@@ -61,6 +61,36 @@ function require_status_access(string $status, array $user, array $owner): void
     }
 }
 
+function require_financial_status_transition(array $owner, string $source, string $target, bool $unlocked): void
+{
+    if ($source === $target || $unlocked) return;
+    foreach ([$source, $target] as $status) {
+        $lock = INVENTORY_STATUS_LOCKS[$status] ?? '';
+        if ($lock !== '' && (int) ($owner[$lock] ?? 0) === 1) {
+            throw new HttpException('涉及财务锁定仓库的流转，请先验证财务密码解锁。', 403, 'FINANCIAL_LOCKED');
+        }
+    }
+}
+
+/** @param list<int> $ids Verified tenant item IDs, inside the tenant mutation lock. */
+function require_unique_main_flow_transition(PDO $pdo, int $tenantId, array $ids, string $target): void
+{
+    if ($ids === [] || in_array($target, ['REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD'], true)) return;
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    // SQL equality follows the same case/accent-insensitive collation as normal saves.
+    // Other selected items will also enter the main flow, even if currently in repair/parts.
+    $statement = $pdo->prepare("SELECT incoming.service_no FROM inventory_items incoming
+        JOIN inventory_items other ON other.user_id = incoming.user_id
+            AND other.service_no = incoming.service_no AND other.id <> incoming.id
+        WHERE incoming.user_id = ? AND incoming.id IN ($placeholders)
+            AND (other.status NOT IN ('REPAIR', 'REPAIR_DONE', 'PARTS', 'PARTS_SOLD')
+                OR other.id IN ($placeholders)) LIMIT 1");
+    $statement->execute(array_merge([$tenantId], $ids, $ids));
+    if ($statement->fetchColumn() !== false) {
+        throw new HttpException('流转失败：主流程中存在重复服务编号，请先核对记录。', 409);
+    }
+}
+
 /** @return list<int> */
 function parse_ids(string $value, int $maximum = 200): array
 {

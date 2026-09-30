@@ -5,7 +5,7 @@ require_once __DIR__ . '/config.php';
 
 final class HttpException extends RuntimeException
 {
-    public function __construct(string $message, private readonly int $statusCode = 400)
+    public function __construct(string $message, private readonly int $statusCode = 400, private readonly ?string $errorCode = null)
     {
         parent::__construct($message);
     }
@@ -13,6 +13,11 @@ final class HttpException extends RuntimeException
     public function statusCode(): int
     {
         return $this->statusCode;
+    }
+
+    public function errorCode(): ?string
+    {
+        return $this->errorCode;
     }
 }
 
