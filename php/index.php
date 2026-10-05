@@ -27,7 +27,7 @@ if ($timeout_minutes > 0) {
     $_SESSION['last_active_time'] = $now;
 }
 // ==========================================
-unset($_SESSION['finance_unlocked_' . $_SESSION['user_id']]);
+clear_financial_unlock((int) $_SESSION['user_id']);
 
 $perm_finance = $currentUser['perm_finance'] ?? 1;
 $perm_edit = $currentUser['perm_edit'] ?? 1;
@@ -1012,6 +1012,40 @@ if ($is_initial_admin) {
         return sessionStorage.getItem('sys_tab_locked') === '1' || localStorage.getItem('sys_global_locked') === '1';
     }
 
+    function applyFinancialRevocation(response) {
+        if (response.finance_unlocked !== false || !isFinanceUnlocked) return false;
+        isFinanceUnlocked = false;
+        lastKnownUpdate = null;
+        // Remove cached money immediately, even if the subsequent list request fails.
+        const mask = value => {
+            if (!value || typeof value !== 'object') return;
+            Object.keys(value).forEach(key => {
+                if (['cost_rmb','freight','collected_amount','profit','tc','tf','tp'].includes(key)) value[key] = '***';
+                else mask(value[key]);
+            });
+        };
+        mask(currentData);
+        mask(summaryData);
+        // Keep non-financial drafts intact, but stop displaying/submitting money
+        // that was copied into an editor before the grant was revoked.
+        if (LOCK_TABS[currentTab] === 1) {
+            ['form_unit_cost','form_unit_freight','form_unit_collected'].forEach(id => {
+                const field = document.getElementById(id);
+                if (field) { field.value = ''; field.disabled = true; }
+            });
+            ['modal_cost_total','modal_freight_total','modal_collected_total'].forEach(id => {
+                const label = document.getElementById(id);
+                if (label) label.innerText = '';
+            });
+        }
+        if (typeof selectedIdsToRestore !== 'undefined') {
+            selectedIdsToRestore = Array.from(document.querySelectorAll('.row-checkbox:checked'), row => row.value);
+        }
+        renderSummaryPanels();
+        renderTable();
+        return true;
+    }
+
     function rowVersionFor(id) {
         const row = currentData.find(item => Number(item.id) === Number(id));
         return row ? Number(row.row_version) : 0;
@@ -1333,7 +1367,7 @@ if ($is_initial_admin) {
         if(currentTab === 'NONE') return;
         const generation = ++inventoryLoadGeneration;
         inventoryManualLoading = true;
-        const viewKey = inventoryViewKey();
+        let viewKey = inventoryViewKey();
         lastKnownUpdate = null;
         const tb = document.getElementById('tableBody');
         tb.innerHTML = '<tr><td colspan="14" class="text-center py-16 text-slate-400 font-medium">正在与服务器同步检索...</td></tr>';
@@ -1345,7 +1379,11 @@ if ($is_initial_admin) {
             try {
                 const checkRes = await apiFetch(`${INVENTORY_API_URL}?action=check_update`);
                 const checkJson = await checkRes.json();
-                if (checkJson.status === 'success') loadedRevision = checkJson.last_update;
+                if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
+                if (checkJson.status === 'success') {
+                    loadedRevision = checkJson.last_update;
+                    if (applyFinancialRevocation(checkJson)) viewKey = inventoryViewKey();
+                }
             } catch (e) {}
             if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
             const params = new URLSearchParams({
@@ -1362,6 +1400,8 @@ if ($is_initial_admin) {
             if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
 
             if (j.status === 'success') {
+                if (applyFinancialRevocation(j)) viewKey = inventoryViewKey();
+                if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
                 currentData = j.data;
                 totalFilteredItems = parseInt(j.total);
                 summaryData = j.summary;
@@ -1792,6 +1832,7 @@ if ($is_initial_admin) {
         document.getElementById('form_quantity').value = 1;
         document.getElementById('form_status').value = currentTab === 'NONE' ? 'US' : currentTab;
         document.getElementById('form_remarks').value = '';
+        document.getElementById('form_unit_collected').disabled = false;
 
         let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked);
         let sF = (PERM_FINANCE === 1) && !isTabLocked;
@@ -1833,6 +1874,7 @@ if ($is_initial_admin) {
         document.getElementById('form_quantity').value = row.quantity || 1;
         document.getElementById('form_config_desc').value = row.config_desc;
         document.getElementById('form_remarks').value = row.remarks || '';
+        document.getElementById('form_unit_collected').disabled = false;
 
         let isTabLocked = (LOCK_TABS[currentTab] === 1 && !isFinanceUnlocked);
         let sF = (PERM_FINANCE === 1) && !isTabLocked;
@@ -2658,15 +2700,17 @@ if ($is_initial_admin) {
         if (silentRefreshRunning || !canSilentlyRefresh()) return;
         silentRefreshRunning = true;
         const generation = inventoryLoadGeneration;
-        const viewKey = inventoryViewKey();
+        let viewKey = inventoryViewKey();
 
         try {
             // ⚡ 性能核心：先用轻量级探针查询数据库有没有发生变动
             const checkRes = await apiFetch(`${INVENTORY_API_URL}?action=check_update`);
             const checkJson = await checkRes.json();
-            if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || !canSilentlyRefresh()) return;
+            if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
 
             if (checkJson.status === 'success') {
+                if (applyFinancialRevocation(checkJson)) viewKey = inventoryViewKey();
+                if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || !canSilentlyRefresh()) return;
                 // 如果是第一次运行，或者别人操作导致时间戳变了，才去拉取全量数据
                 if (lastKnownUpdate === null || checkJson.last_update !== lastKnownUpdate) {
                     const params = new URLSearchParams({
@@ -2681,9 +2725,11 @@ if ($is_initial_admin) {
 
                     const r = await apiFetch(`${INVENTORY_API_URL}?${params.toString()}`);
                     const j = await r.json();
-                    if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || !canSilentlyRefresh()) return;
+                    if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || inventoryScreenLocked()) return;
 
                     if (j.status === 'success') {
+                        if (applyFinancialRevocation(j)) viewKey = inventoryViewKey();
+                        if (generation !== inventoryLoadGeneration || viewKey !== inventoryViewKey() || !canSilentlyRefresh()) return;
                         currentData = j.data;
                         totalFilteredItems = parseInt(j.total);
                         summaryData = j.summary;

@@ -1,6 +1,18 @@
 <?php
 declare(strict_types=1);
 
+/** Round the dispatched share once, then assign the exact remainder in integer cents. */
+function split_inventory_money(mixed $total, int $quantity, int $dispatch): array
+{
+    if ($quantity < 1 || $quantity > 100000 || $dispatch < 1 || $dispatch > $quantity) {
+        throw new RuntimeException('出库数量无效。');
+    }
+    $cents = (int) round(bounded_money($total, '库存金额') * 100);
+    $dispatched = intdiv($cents * $dispatch + intdiv($quantity, 2), $quantity);
+    $format = static fn (int $amount): string => sprintf('%d.%02d', intdiv($amount, 100), $amount % 100);
+    return ['dispatched'=>$format($dispatched), 'remaining'=>$format($cents - $dispatched)];
+}
+
 require_once __DIR__ . '/security.php';
 
 const INVENTORY_STATUS_PERMISSIONS = [

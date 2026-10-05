@@ -19,14 +19,19 @@ function deferred() {
 function setup(request, render) {
     const storage = new Map();
     const elements = new Map();
+    let selected = false;
     const context = vm.createContext({
         URLSearchParams, Date,
         document: {
             getElementById(id) {
-                if (!elements.has(id)) elements.set(id, { innerHTML: '', classList: { contains: () => true } });
+                if (!elements.has(id)) {
+                    const classes = new Set(['hidden']);
+                    elements.set(id, {innerHTML:'', value:'', disabled:false,
+                        classList:{contains:key=>classes.has(key),add:key=>classes.add(key),remove:key=>classes.delete(key)}});
+                }
                 return elements.get(id);
             },
-            querySelectorAll: () => [],
+            querySelectorAll: () => selected ? [{value:'1',checked:true}] : [],
         },
         sessionStorage: { getItem: key => storage.get(key) },
         localStorage: { getItem: key => storage.get(key) },
@@ -44,6 +49,7 @@ function setup(request, render) {
         let currentPage = 1, currentData = [{id: 0}], totalFilteredItems = 0, summaryData = null;
         let isFinanceUnlocked = false, tabLastActive = Date.now();
         const ITEMS_PER_PAGE = 50, INVENTORY_API_URL = '/api_inventory.php';
+        const LOCK_TABS = {US:1};
         ${state}
         ${manual}
         ${polling}
@@ -51,11 +57,56 @@ function setup(request, render) {
     return {
         run: expression => vm.runInContext(expression, context),
         lock: () => storage.set('sys_global_locked', '1'),
+        select: () => { selected = true; },
     };
 }
 
 const revision = value => ({ status: 'success', last_update: String(value) });
 const list = id => ({ status: 'success', data: [{id}], total: 1, summary: {total_count: 1} });
+
+test('revoked finance grants mask cached prices even when revision is unchanged and the list fails', async () => {
+    let reads = 0;
+    const page = setup(async params => {
+        if (params.get('action') === 'check_update') return {...revision(1), finance_unlocked: false};
+        reads++;
+        throw new Error('offline');
+    });
+    page.run("isFinanceUnlocked=true; lastKnownUpdate='1'; currentData=[{id:1,cost_rmb:'10.00',freight:'1.00',profit:'9.00',collected_amount:'20.00'}]; summaryData={tc:10,tf:1,tp:9,total_count:1}");
+    await page.run('silentRefresh()');
+    assert.equal(page.run('isFinanceUnlocked'), false);
+    assert.equal(page.run('currentData[0].cost_rmb'), '***');
+    assert.equal(page.run('summaryData.tc'), '***');
+    assert.equal(reads, 1);
+});
+
+test('manual loading notices grant revocation between probe and list', async () => {
+    const page = setup(async params => params.get('action') === 'check_update'
+        ? {...revision(1),finance_unlocked:true} : {...list(2),finance_unlocked:false});
+    page.run('isFinanceUnlocked=true');
+    await page.run('loadData()');
+    assert.equal(page.run('isFinanceUnlocked'),false);
+    assert.equal(page.run('currentData[0].id'),2);
+});
+
+for (const interaction of ['selection','editor']) {
+    test(`an in-flight probe revokes money even if ${interaction} begins before the reply`, async () => {
+        const waiting=deferred();
+        const page=setup(async () => waiting.promise);
+        page.run("isFinanceUnlocked=true; lastKnownUpdate='1'; currentData=[{id:1,cost_rmb:'10.00'}]");
+        const pending=page.run('silentRefresh()');
+        if(interaction==='selection') page.select();
+        else page.run("document.getElementById('itemModal').classList.remove('hidden'); document.getElementById('form_unit_cost').value='10'; document.getElementById('form_remarks').value='keep draft'");
+        waiting.resolve({...revision(1),finance_unlocked:false});
+        await pending;
+        assert.equal(page.run('isFinanceUnlocked'),false);
+        assert.equal(page.run('currentData[0].cost_rmb'),'***');
+        if(interaction==='editor') {
+            assert.equal(page.run("document.getElementById('form_unit_cost').value"),'');
+            assert.equal(page.run("document.getElementById('form_unit_cost').disabled"),true);
+            assert.equal(page.run("document.getElementById('form_remarks').value"),'keep draft');
+        }
+    });
+}
 
 for (const failure of ['network', 'api']) {
     test(`polling retries the same revision after a ${failure} failure`, async () => {

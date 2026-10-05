@@ -175,6 +175,81 @@ function verify_stored_secret(string $input, string $stored): array
     return ['valid' => true, 'upgrade_hash' => password_hash($input, PASSWORD_DEFAULT)];
 }
 
+function financial_credential_stamp(array $user, array $owner): string
+{
+    return hash('sha256', json_encode([
+        (int) $owner['id'], (string) ($owner['lock_password'] ?? ''),
+        (int) $user['id'], (string) ($user['lock_password'] ?? ''),
+    ], JSON_THROW_ON_ERROR));
+}
+
+function clear_financial_unlock(int $userId): void
+{
+    unset($_SESSION['finance_unlocked_' . $userId], $_SESSION['finance_stamp_' . $userId]);
+}
+
+function grant_financial_unlock(array $user, array $owner): void
+{
+    $_SESSION['finance_unlocked_' . (int) $user['id']] = true;
+    $_SESSION['finance_stamp_' . (int) $user['id']] = financial_credential_stamp($user, $owner);
+}
+
+function financial_session_is_unlocked(array $user, array $owner): bool
+{
+    $userId = (int) $user['id'];
+    $stamp = $_SESSION['finance_stamp_' . $userId] ?? null;
+    if (($_SESSION['finance_unlocked_' . $userId] ?? false) === true
+        && is_string($stamp) && hash_equals(financial_credential_stamp($user, $owner), $stamp)) {
+        return true;
+    }
+    clear_financial_unlock($userId);
+    return false;
+}
+
+/** Authenticate one credential owner, sharing a bounded counter across all proof routes. */
+function financial_rate_key(int $credentialId): string
+{
+    // Login usernames are limited to 50 bytes. This longer namespace cannot be
+    // supplied as a username, or cleared by an unrelated account's login.
+    return 'financial-vault-password-verification-account-rate-limit:' . $credentialId;
+}
+
+function require_financial_password(PDO $pdo, int $credentialId, string $input): string
+{
+    if ($pdo->inTransaction()) throw new LogicException('Financial proof must precede the mutation transaction.');
+    $key = financial_rate_key($credentialId);
+    $pdo->beginTransaction();
+    try {
+        // Serialize guesses for this credential, including attempts from different sessions.
+        $statement = $pdo->prepare('SELECT lock_password FROM users WHERE id = ? FOR UPDATE');
+        $statement->execute([$credentialId]);
+        $row = $statement->fetch(PDO::FETCH_ASSOC);
+        if (!$row) throw new HttpException('账号不存在。', 403);
+        $stored = (string) ($row['lock_password'] ?? '');
+        if ($stored !== '' && auth_lock_until($pdo, 'username', $key) !== null) {
+            throw new HttpException('财务密码尝试过多，请在 15 分钟后重试。', 429);
+        }
+        $proof = $stored === '' ? ['valid'=>true, 'upgrade_hash'=>null] : verify_stored_secret($input, $stored);
+        if (!$proof['valid']) {
+            $failures = record_auth_failure($pdo, 'username', $key);
+            // Persist the attempt before returning an error (the outer handler may roll back).
+            $pdo->commit();
+            throw new HttpException($failures >= 5
+                ? '财务密码尝试过多，请在 15 分钟后重试。' : '财务密码验证失败。', $failures >= 5 ? 429 : 403);
+        }
+        if ($proof['upgrade_hash'] !== null) {
+            $stored = $proof['upgrade_hash'];
+            $pdo->prepare('UPDATE users SET lock_password = ? WHERE id = ?')->execute([$stored, $credentialId]);
+        }
+        clear_auth_failures($pdo, 'username', $key);
+        $pdo->commit();
+        return $stored;
+    } catch (Throwable $exception) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $exception;
+    }
+}
+
 function auth_lock_until(PDO $pdo, string $type, string $identifier): ?DateTimeImmutable
 {
     assert_auth_rate_key($type, $identifier);

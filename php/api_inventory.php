@@ -44,6 +44,8 @@ $stmtOwner = $pdo->prepare("SELECT * FROM users WHERE id = ? AND parent_id = 0")
 $stmtOwner->execute([$owner_id]);
 $ownerData = $stmtOwner->fetch(PDO::FETCH_ASSOC);
 if (!$ownerData) { json_response(['status' => 'error', 'message' => '登录状态失效'], 401); }
+// Credentials are read afresh on every request; invalidate grants from old devices too.
+financial_session_is_unlocked($currUser, $ownerData);
 // -----------------------------------------------------------
 
 // 修复：全局定义状态锁映射，供所有 API (特别是 import) 共享，防止变量未定义被绕过
@@ -80,7 +82,8 @@ if ($action === 'heartbeat') {
 // --- ⚡ 性能提升：轻量级更新探针，拒绝无效的重型查询 ---
 // --- ⚡ 性能提升：轻量级更新探针，拒绝无效的重型查询 ---
 if ($action === 'check_update') {
-    echo json_encode(['status' => 'success', 'last_update' => (string) tenant_inventory_revision($pdo, $owner_id)]);
+    echo json_encode(['status' => 'success', 'last_update' => (string) tenant_inventory_revision($pdo, $owner_id),
+        'finance_unlocked' => financial_session_is_unlocked($currUser, $ownerData)]);
     exit;
 }
 // ---------------------------------
@@ -118,7 +121,7 @@ try {
                 if (!is_array($currentOwner)) throw new HttpException('登录状态失效', 401);
                 $status = (string) ($snapshot['status'] ?? '');
                 require_status_access($status, $currentOwner, $currentOwner);
-                $unlocked = isset($_SESSION['finance_unlocked_' . $user_id]) && $_SESSION['finance_unlocked_' . $user_id] === true;
+                $unlocked = financial_session_is_unlocked($currentOwner, $currentOwner);
                 if (!can_manage_financial_values((int) ($currentOwner['perm_finance'] ?? 1), $currentOwner, [$status], $unlocked)) {
                     throw new HttpException('当前仓库的财务保险箱尚未解锁，无法恢复。', 403);
                 }
@@ -263,7 +266,8 @@ try {
         }
         // ----------------------------------------------------
 
-        echo json_encode(['status' => 'success', 'data' => $data, 'total' => $filteredTotal, 'summary' => $summary]);
+        echo json_encode(['status' => 'success', 'data' => $data, 'total' => $filteredTotal, 'summary' => $summary,
+            'finance_unlocked' => financial_session_is_unlocked($currUser, $ownerData)]);
     }
     elseif ($action === 'batch_update_status') {
         if ($perm_edit == 0) throw new HttpException("权限不足");
@@ -455,11 +459,10 @@ try {
 
             $total_collected = bounded_money($unit_collected * $dispatch_qty, '总收款金额');
             require_sold_record_details('PARTS_SOLD', $receiver, $total_collected);
-            $unit_cost = $item['quantity'] > 0 ? ($item['cost_rmb'] / $item['quantity']) : 0;
-            $unit_freight = $item['quantity'] > 0 ? ($item['freight'] / $item['quantity']) : 0;
-
-            $dispatch_cost = $unit_cost * $dispatch_qty;
-            $dispatch_freight = $unit_freight * $dispatch_qty;
+            $costSplit = split_inventory_money($item['cost_rmb'], (int) $item['quantity'], $dispatch_qty);
+            $freightSplit = split_inventory_money($item['freight'], (int) $item['quantity'], $dispatch_qty);
+            $dispatch_cost = $costSplit['dispatched'];
+            $dispatch_freight = $freightSplit['dispatched'];
 
             if ($dispatch_qty == $item['quantity']) {
                 $stmtUpdate = $pdo->prepare("UPDATE inventory_items SET status='PARTS_SOLD', receiver=?, collected_amount=?, status_date=CURRENT_DATE(), status_timestamp=CURRENT_TIMESTAMP(), row_version=row_version+1 WHERE id=? AND user_id=?");
@@ -468,12 +471,11 @@ try {
                 record_audit_event($pdo, $owner_id, $currUser, 'inventory.dispatch', 'inventory', $id, $item, $afterItem);
             } else {
                 $new_qty = $item['quantity'] - $dispatch_qty;
-                $new_cost = $item['cost_rmb'] - $dispatch_cost;
-                $new_freight = $item['freight'] - $dispatch_freight;
+                $new_cost = $costSplit['remaining'];
+                $new_freight = $freightSplit['remaining'];
 
                 // --- 修复：同步按比例扣减留在仓库里的母体收款金额，防止被两头重复计算利润 ---
-                $unit_collected_orig = $item['quantity'] > 0 ? ($item['collected_amount'] / $item['quantity']) : 0;
-                $new_collected = $item['collected_amount'] - ($unit_collected_orig * $dispatch_qty);
+                $new_collected = split_inventory_money($item['collected_amount'], (int) $item['quantity'], $dispatch_qty)['remaining'];
 
                 $stmt1 = $pdo->prepare("UPDATE inventory_items SET quantity=?, cost_rmb=?, freight=?, collected_amount=?, row_version=row_version+1 WHERE id=? AND user_id=?");
                 $stmt1->execute([$new_qty, $new_cost, $new_freight, $new_collected, $id, $owner_id]);
@@ -771,43 +773,17 @@ try {
         echo json_encode(['status' => 'success', 'message' => "成功导入并更新 {$success} 条数据！"]);
     }
     elseif ($action === 'verify_lock') {
-        $pwd = $_POST['pwd'] ?? '';
-
-        $stmtOwner = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
-        $stmtOwner->execute([$owner_id]);
-        $owner_pwd = $stmtOwner->fetchColumn();
-
-        $self_pwd = '';
-        if ($parent_id > 0) {
-            $stmtSelf = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
-            $stmtSelf->execute([$user_id]);
-            $self_pwd = $stmtSelf->fetchColumn();
-        }
-
-        if (empty($owner_pwd) && empty($self_pwd)) {
-            $_SESSION['finance_unlocked_' . $user_id] = true;
-            echo json_encode(['status' => 'success']);
-            exit;
-        }
-
-        // --- 修复：优先校验操作者自己设置的专属保险箱密码，如果没有设置，再用老板密码兜底 ---
-        $target_pwd = ($parent_id > 0 && !empty($self_pwd)) ? $self_pwd : $owner_pwd;
-        $target_id = ($parent_id > 0 && !empty($self_pwd)) ? $user_id : $owner_id;
-
-        if (password_verify($pwd, $target_pwd) || ($target_pwd === $pwd && $pwd !== '')) {
-            if ($target_pwd === $pwd && $pwd !== '') {
-                $new_hash = password_hash($pwd, PASSWORD_DEFAULT);
-                $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ?")->execute([$new_hash, $target_id]);
-            }
-            $_SESSION['finance_unlocked_' . $user_id] = true;
-            echo json_encode(['status' => 'success']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => '验证失败：此区域受系统主账号保护，必须输入主账号的财务密码！']);
-        }
+        $target_id = ($parent_id > 0 && (string) ($currUser['lock_password'] ?? '') !== '') ? $user_id : $owner_id;
+        $authenticatedHash = require_financial_password($pdo, $target_id, (string) ($_POST['pwd'] ?? ''));
+        // Bind to the hash actually verified, not a later concurrent password change.
+        if ($target_id === $owner_id) $ownerData['lock_password'] = $authenticatedHash;
+        if ($target_id === $user_id) $currUser['lock_password'] = $authenticatedHash;
+        grant_financial_unlock($currUser, $ownerData);
+        echo json_encode(['status' => 'success']);
     }
     // === 🚀 新增：接收前端主动上锁的强制指令 ===
     elseif ($action === 'relock') {
-        unset($_SESSION['finance_unlocked_' . $user_id]);
+        clear_financial_unlock($user_id);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'get_sec_questions') {
@@ -842,6 +818,7 @@ try {
                 $hash_to_store = empty($new_lock) ? '' : password_hash($new_lock, PASSWORD_DEFAULT);
                 $stmt = $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ?");
                 $stmt->execute([$hash_to_store, $user_id]);
+                clear_financial_unlock($user_id);
                 echo json_encode(['status' => 'success']);
                 exit;
             }
@@ -863,6 +840,7 @@ try {
         $hash_to_store = empty($new_lock) ? '' : password_hash($new_lock, PASSWORD_DEFAULT);
         $stmt = $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ?");
         $stmt->execute([$hash_to_store, $user_id]);
+        clear_financial_unlock($user_id);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'update_sec_questions') {
@@ -918,19 +896,13 @@ try {
     elseif ($action === 'set_lock') {
         $old_lock = $_POST['old_lock'] ?? '';
         $new_pwd = $_POST['new_pwd'] ?? '';
-        $stmt = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
-        $stmt->execute([$user_id]);
-        $real_pwd = $stmt->fetchColumn();
-
-        // 兼容原有的明文判断逻辑
-        if (!empty($real_pwd)) {
-            $is_match = password_verify($old_lock, $real_pwd) || ($real_pwd === $old_lock);
-            if (!$is_match) throw new HttpException("原保险箱密码验证失败！");
-        }
+        $real_pwd = require_financial_password($pdo, $user_id, (string) $old_lock);
 
         $hash_to_store = empty($new_pwd) ? '' : password_hash($new_pwd, PASSWORD_DEFAULT);
-        $stmt = $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ?");
-        $stmt->execute([$hash_to_store, $user_id]);
+        $stmt = $pdo->prepare("UPDATE users SET lock_password = ? WHERE id = ? AND COALESCE(lock_password, '') = ?");
+        $stmt->execute([$hash_to_store, $user_id, $real_pwd]);
+        if ($stmt->rowCount() !== 1 && $hash_to_store !== $real_pwd) throw new HttpException('财务密码已变更，请重试。', 409);
+        clear_financial_unlock($user_id);
         echo json_encode(['status' => 'success']);
     }
     elseif ($action === 'set_timeout') {
@@ -944,16 +916,7 @@ try {
         if ($parent_id > 0) throw new HttpException("无权修改全局配置！");
 
         // --- 新增：强制校验保险箱密码 ---
-        $stmtPwd = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
-        $stmtPwd->execute([$user_id]);
-        $real_pwd = $stmtPwd->fetchColumn();
-
-        if (!empty($real_pwd)) {
-            $input_pwd = $_POST['lock_pwd'] ?? '';
-            if (!password_verify($input_pwd, $real_pwd) && $real_pwd !== $input_pwd) {
-                throw new HttpException("保险箱密码验证失败，拒绝修改全局锁配置！");
-            }
-        }
+        require_financial_password($pdo, $user_id, (string) ($_POST['lock_pwd'] ?? ''));
         // ---------------------------------
 
         // 👇 这里是你刚刚不小心删掉的变量定义，我已经帮你补全了
@@ -1013,16 +976,7 @@ try {
 
         // === 核心安全修复：如果开启或保留了财务查看权限，后端强制校验主账号财务锁，防止恶意添加后门账号 ===
         if ($p_fin === 1) {
-            $stmtPwd = $pdo->prepare("SELECT lock_password FROM users WHERE id = ?");
-            $stmtPwd->execute([$user_id]); // 主账号的 user_id
-            $real_pwd = $stmtPwd->fetchColumn();
-
-            if (!empty($real_pwd)) {
-                $input_pwd = $_POST['lock_pwd'] ?? '';
-                if (!password_verify($input_pwd, $real_pwd) && $real_pwd !== $input_pwd) {
-                    throw new HttpException("安全拦截：授权或保留员工的【财务查看权限】必须验证您的财务保险箱密码！");
-                }
-            }
+            require_financial_password($pdo, $user_id, (string) ($_POST['lock_pwd'] ?? ''));
         }
         // ==================================================================================
 
